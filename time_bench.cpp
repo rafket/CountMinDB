@@ -4,11 +4,10 @@
 using namespace std;
 
 int main(int argc, char** argv) {
-    if(argc!=3) {
-        printf("Usage:\n    %s [number of elements] [number of queries]\n", argv[0]);
+    if(argc!=4) {
+        printf("Usage:\n    %s [number of elements] [number of updates] [number of queries]\n", argv[0]);
+        exit(0);
     }
-    // cm should be a factor of 10 smaller
-    // epsilon = e/(10*n), additive error of e/10
     mt19937_64 mt(1337);
     uniform_int_distribution<uint32_t> dist(0, (uint32_t)-1);
     int n=atoi(argv[1]), u=atoi(argv[2]), q=atoi(argv[3]);
@@ -16,7 +15,7 @@ int main(int argc, char** argv) {
     double epsilon=M_E/(10*n), delta=1/pow(M_E, 3);
     double epsilon_u=M_E/(10*u);
     printf("epsilon: %lf, epsilon_u: %lf, delta: %lf\n", epsilon, epsilon_u, delta);
-    CountMin cm_normal(epsilon, delta, 1337, false);
+    CountMin cm_normal(epsilon, delta, 1337, false, "file.cm");
     CountMin cm_sparse(epsilon, delta, 1337, true);
     CountMin cm_optimized(epsilon_u, delta, 1337, false);
     vector<pair<uint64_t, uint64_t> > arr(n);

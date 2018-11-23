@@ -1,11 +1,14 @@
 #include <bits/stdc++.h>
 #include "MurmurHash3.h"
+#include <sys/mman.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 using namespace std;
 
 class CountMin {
 public:
-    CountMin(double eps, double delta, uint64_t seed, bool is_sparse);
+    CountMin(double eps, double delta, uint64_t seed, bool is_sparse, char* filename);
     void update(uint64_t i, int c);                              // increase a_i by c
     int pointQuery(uint64_t i) const;                            // return a_i
     int innerProductQuery(const CountMin &other) const;     // return a * b (inner product)
@@ -19,8 +22,8 @@ public:
         return d;
     }
 
-    const vector<vector<int>> &getCounts() const {
-        return counts;
+    const int** getCounts() const {
+        return (const int**)counts;
     }
 
     const vector<map<uint64_t, int>> &getSparseCounts() const {
@@ -46,11 +49,14 @@ public:
     }
 
 private:
-    vector<vector<int> > counts;
+    int* flatcounts;
+    int** counts;
+    //vector<vector<int> > counts;
     vector<map<uint64_t, int> > sparse_counts;
     vector<uint32_t> hash_seed;
     uint64_t w, d;
     bool is_sparse;
+    char* filename;
 
     uint64_t hash(uint64_t key, uint32_t seed) const {
         uint64_t out[2];
@@ -59,15 +65,29 @@ private:
     }
 };
 
-CountMin::CountMin(double eps, double delta, uint64_t seed, bool is_sparse) {
+CountMin::CountMin(double eps, double delta, uint64_t seed, bool is_sparse = false, char* filename = NULL) {
     this->is_sparse = is_sparse;
     w = ceil(exp(1) / eps);
     d = ceil(log(1 / delta));
     printf("w: %lu, d: %lu\n", w, d);
     if(!is_sparse) {
-        counts.assign(d, vector<int>(w, 0));
+        if(filename == NULL) {
+            this->filename = NULL;
+            flatcounts = (int*)calloc(d*w, sizeof(int));
+        }
+        else {
+            this->filename = strdup(filename);
+            int fd = open(filename, O_RDWR | O_CREAT, 0666);
+            truncate(filename, d*w*sizeof(int));
+            flatcounts = (int*)mmap(0, d*w*sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+        }
+        counts = (int**)malloc(d*sizeof(int*));
+        for(size_t i=0; i<d; ++i) {
+            counts[i] = flatcounts + i*w;
+        }
     }
     else {
+        assert(filename == NULL);
         sparse_counts.assign(d, map<uint64_t, int>());
     }
     hash_seed.resize(d);
@@ -121,7 +141,7 @@ int CountMin::pointQuery(uint64_t i) const {
 }
 
 int CountMin::innerProductQuery(const CountMin &other) const { // sparse unimplemented
-    const auto &otherCounts = other.getCounts();
+    const int** otherCounts = other.getCounts();
     int res = -1;
     if(is_sparse) {
         fprintf(stderr, "NOT IMPLEMENTED\n");
@@ -146,7 +166,7 @@ void CountMin::mergeCMs(const CountMin& other) {
     }
 
     if(!other.is_sparse) {
-        const auto &otherCounts = other.getCounts();
+        const int** otherCounts = other.getCounts();
         for(size_t i=0; i<d; ++i) {
             for(size_t j=0; j<w; ++j) {
                 counts[i][j] += otherCounts[i][j];
