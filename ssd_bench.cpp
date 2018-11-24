@@ -88,9 +88,9 @@ int main(int argc, char** argv) {
     start = clock();
     for(int i=0; i<q; ++i) {
         uint64_t key = dist(mt);
-        for(int j=0; j<n; ++j) {
+        for(int j=0; j<b; ++j) {
             if(key==arr[j].first) {
-                sum3 += arr[j].second;
+                sum4 += arr[j].second;
             }
         }
     }

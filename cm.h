@@ -83,6 +83,7 @@ CountMin::CountMin(double eps, double delta, uint64_t seed, bool is_sparse = fal
             int fd = open(filename, O_RDWR | O_CREAT, 0666);
             ftruncate(fd, d*w*sizeof(int));
             flatcounts = (int*)mmap(0, d*w*sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+            madvise(flatcounts, d*w*sizeof(int), MADV_RANDOM);
         }
         counts = (int**)malloc(d*sizeof(int*));
         for(size_t i=0; i<d; ++i) {
@@ -103,6 +104,7 @@ CountMin::CountMin(double eps, double delta, uint64_t seed, bool is_sparse = fal
 
 void CountMin::update(uint64_t i, int c) {
     if(!is_sparse) {
+        madvise(flatcounts, d*w*sizeof(int), MADV_DONTNEED);
         for(size_t j = 0; j < d; j++) {
             counts[j][hash(i, hash_seed[j]) % w] += c;
         }
@@ -118,6 +120,7 @@ int CountMin::pointQuery(uint64_t i) const {
     int res = 0;
     if(!is_sparse) {
         res = counts[0][hash(i, hash_seed[0]) % w];
+        madvise(flatcounts, d*w*sizeof(int), MADV_DONTNEED);
         for(size_t j = 1; j < d; j++) {
             res = min(res, counts[j][hash(i, hash_seed[j]) % w]);
         }
