@@ -93,7 +93,7 @@ int main(int argc, char** argv) {
             }
         }
     }
-    // printf("pay no attention to these numbers: %lu %lu %lu\n", sum1, sum2, sum3);
+    printf("pay no attention to these numbers: %lu %lu %lu %lu\n", sum1, sum2, sum3, sum4);
     finish=clock();
     printf("querying buffer took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
 
