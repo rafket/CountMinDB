@@ -6,6 +6,9 @@
 
 using namespace std;
 
+#ifndef CM_H
+#define CM_H
+
 class CountMin {
 public:
     CountMin(double eps, double delta, uint64_t seed, bool is_sparse, char* filename);
@@ -78,7 +81,7 @@ CountMin::CountMin(double eps, double delta, uint64_t seed, bool is_sparse = fal
         else {
             this->filename = strdup(filename);
             int fd = open(filename, O_RDWR | O_CREAT, 0666);
-            truncate(filename, d*w*sizeof(int));
+            ftruncate(fd, d*w*sizeof(int));
             flatcounts = (int*)mmap(0, d*w*sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
         }
         counts = (int**)malloc(d*sizeof(int*));
@@ -182,3 +185,5 @@ void CountMin::mergeCMs(const CountMin& other) {
         }
     }
 }
+
+#endif

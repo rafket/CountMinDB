@@ -3,14 +3,15 @@
 
 using namespace std;
 
-int main() {
+int main(int argc, char** argv) {
+    assert(argc==3);
     // cm should be a factor of 10 smaller
     // epsilon = e/(10*n), additive error of e/10
     mt19937_64 mt(1337);
     uniform_int_distribution<uint32_t> dist(0, (uint32_t)-1);
-    int n=100;
+    int n=atoi(argv[1]), q=atoi(argv[2]);
     printf("I will insert %d random elements\n", n);
-    double epsilon=M_E/(10*n), delta=1/pow(M_E, 3);
+    double epsilon=M_E/(4*n), delta=1/pow(M_E, 3);
     printf("epsilon: %lf, delta: %lf\n", epsilon, delta);
     CountMin cm_normal(epsilon, delta, 1337, false);
 //    CountMin cm_sparse(epsilon, delta, 1337, true);
@@ -32,7 +33,7 @@ int main() {
         }
         ++cnt_error_normal[err];
     }*/
-    for(int i=0; i<1000000; ++i) {
+    for(int i=0; i<q; ++i) {
         uint64_t key = dist(mt);
         uint32_t err = abs(cm_normal.pointQuery(key)-arr[key]);
         if(err>0) {

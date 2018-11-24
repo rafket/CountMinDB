@@ -11,6 +11,6 @@ run_time_bench: time_bench
 	./time_bench 200000 200000 10000 && ./time_bench 400000 400000 10000 && ./time_bench 600000 600000 10000 && ./time_bench 800000 800000 10000 && ./time_bench 1000000 100000 10000
 
 run_error_bench: error_bench
-	./error_bench
+	./error_bench 100 1000000
 	
 experiments: run_time_bench run_error_bench
