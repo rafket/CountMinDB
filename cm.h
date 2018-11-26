@@ -130,7 +130,7 @@ CountMin::CountMin(double eps, double delta, uint64_t seed, bool is_sparse = fal
             this->filename = strdup(filename);
             int fd = open(filename, O_RDWR | O_CREAT, 0666);
             ftruncate(fd, d * w * sizeof(int));
-            flatcounts = (int*)mmap(0, d * w * sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_NOCACHE, fd, 0);
+            flatcounts = (int*)mmap(0, d * w * sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
         }
         counts = (int**)malloc(d * sizeof(int*));
         for (size_t i = 0; i < d; ++i) {
