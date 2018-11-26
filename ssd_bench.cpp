@@ -13,9 +13,9 @@ int main(int argc, char** argv) {
         b = atoi(argv[2]),
         q = atoi(argv[3]);
     double epsilon = M_E/(10*n), delta = 1/pow(M_E, 3), epsilon_small = M_E/(10*b);
-    CountMin cm_ssd(epsilon, delta, 1337, false, "file.cm");
-    CountMin cm_sparse(epsilon, delta, 1337, true);
-    CountMin cm_optimized(epsilon_small, delta, 1337, false);
+    CountMin cm_ssd(epsilon, delta, 1337, false, "file.cm", "count-min on SSD");
+    CountMin cm_optimized(epsilon_small, delta, 1337, false, nullptr, "optimized count-min in RAM");
+    CountMin cm_sparse(epsilon, delta, 1337, true, nullptr, "sparse count-min in RAM");
     vector<pair<uint64_t, uint64_t> > arr(n);
     clock_t start, finish;
 
@@ -96,7 +96,7 @@ int main(int argc, char** argv) {
     }
     finish = clock();
     printf("querying buffer took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
-    printf("do not uncomment this line: %lu %lu %lu %lu\n", sum1, sum2, sum3, sum4);
+    printf("do not uncomment this line: %llu %llu %llu %llu\n", sum1, sum2, sum3, sum4);
 
     start = clock();
     cm_ssd.mergeCMs(cm_sparse);

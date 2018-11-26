@@ -1,19 +1,67 @@
-#include <bits/stdc++.h>
-#include "MurmurHash3.h"
-#include <sys/mman.h>
-#include <unistd.h>
-#include <fcntl.h>
-
-using namespace std;
-
 #ifndef CM_H
 #define CM_H
 
+#include <bits/stdc++.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include "MurmurHash3.h"
+
+using namespace std;
+
+struct Hashtable {
+    uint32_t seed;
+    vector<pair<uint64_t, int>> arr;
+
+    Hashtable(uint32_t n, uint32_t seed_) : seed(seed_) {
+        arr.resize(n, make_pair((uint64_t)-1, 0));
+    }
+
+    uint32_t findIndex(uint64_t key) const {
+        uint32_t n = arr.size(), idx = hash(key) % n, cnt = 0;
+        while (arr[idx].first != (uint64_t)-1 && arr[idx].first != key && cnt < n) {
+            cnt++;
+            idx++;
+            idx -= (idx == n) * n;
+        }
+        return cnt == n ? (uint32_t)-1 : idx;
+    }
+
+    // Return a reference to the value at key. If key is new then assert that there is a slot for the new key.
+    int &operator[](uint64_t key) {
+        auto idx = findIndex(key);
+        assert(idx != (uint32_t)-1); 
+        if (arr[idx].first == (uint64_t)-1) {
+            arr[idx].first = key;
+        }
+        return arr[idx].second;
+    }
+
+    // Return value at key if key exists otherwise -1. Assumes values are non-negative.
+    int find(uint64_t key) const {
+        auto idx = findIndex(key);
+        if (idx == (uint32_t)-1 || arr[idx].first == (uint64_t)-1) {
+            return -1;
+        }
+        return arr[idx].second;
+    }
+    
+    uint64_t hash(uint64_t key) const {
+        uint64_t out[2];
+        MurmurHash3_x64_128(&key, sizeof(uint64_t), seed, out);
+        return out[1];
+    }
+
+    uint64_t getMem() const {
+        return sizeof(seed) + arr.size() * sizeof(arr.front());
+    }
+};
+
 class CountMin {
 public:
-    CountMin(double eps, double delta, uint64_t seed, bool is_sparse, char* filename);
-    void update(uint64_t i, int c);                              // increase a_i by c
-    int pointQuery(uint64_t i) const;                            // return a_i
+    CountMin(double eps, double delta, uint64_t seed, bool is_sparse, const char* filename, string name);
+    void update(uint64_t i, int c);                         // increase a_i by c
+    int pointQuery(uint64_t i) const;                       // return a_i
     int innerProductQuery(const CountMin &other) const;     // return a * b (inner product)
     void mergeCMs(const CountMin &other);
 
@@ -29,7 +77,7 @@ public:
         return (const int**)counts;
     }
 
-    const vector<map<uint64_t, int>> &getSparseCounts() const {
+    const vector<Hashtable> &getSparseCounts() const {
         return sparse_counts;
     }
 
@@ -38,28 +86,27 @@ public:
     }
 
     uint64_t getMem() {
-        if(!is_sparse) {
-            return w*d*sizeof(int)+d*sizeof(uint32_t);
+        if (!is_sparse) {
+            return w * d * sizeof(int)  /* size of the CM table */
+                + d * sizeof(uint32_t)  /* size of seed for hash function */;
         }
-        else {
-            int out=0;
-            for(size_t i=0; i<d; ++i) {
-                out += sparse_counts[i].size()*(sizeof(uint64_t)+sizeof(int));
-            }
-            out += d*sizeof(uint32_t);
-            return out;
+        uint64_t out = 0;
+        for (size_t i = 0; i < d; ++i) {
+            out += sparse_counts[i].getMem();  // size of each hashtable
         }
+        out += d * sizeof(uint32_t);
+        return out;
     }
 
 private:
     int* flatcounts;
     int** counts;
-    //vector<vector<int> > counts;
-    vector<map<uint64_t, int> > sparse_counts;
+    vector<Hashtable> sparse_counts;
     vector<uint32_t> hash_seed;
     uint64_t w, d;
     bool is_sparse;
     char* filename;
+    string name;
 
     uint64_t hash(uint64_t key, uint32_t seed) const {
         uint64_t out[2];
@@ -68,49 +115,47 @@ private:
     }
 };
 
-CountMin::CountMin(double eps, double delta, uint64_t seed, bool is_sparse = false, char* filename = NULL) {
+CountMin::CountMin(double eps, double delta, uint64_t seed, bool is_sparse = false, const char* filename = NULL, string name = "noname") {
     this->is_sparse = is_sparse;
-    w = ceil(exp(1) / eps);
+    this->name = name;
+    w = ceil(M_E / eps);
     d = ceil(log(1 / delta));
-    printf("w: %lu, d: %lu\n", w, d);
-    if(!is_sparse) {
-        if(filename == NULL) {
+    printf("%s : w: %llu, d: %llu\n", name.c_str(), w, d);
+    if (!is_sparse) {
+        if (filename == NULL) {
             this->filename = NULL;
-            flatcounts = (int*)calloc(d*w, sizeof(int));
-        }
-        else {
+            flatcounts = (int*)calloc(d * w, sizeof(int));
+        } else {
+            // TODO: implement this
             this->filename = strdup(filename);
             int fd = open(filename, O_RDWR | O_CREAT, 0666);
-            ftruncate(fd, d*w*sizeof(int));
-            flatcounts = (int*)mmap(0, d*w*sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-            madvise(flatcounts, d*w*sizeof(int), MADV_RANDOM);
+            ftruncate(fd, d * w * sizeof(int));
+            flatcounts = (int*)mmap(0, d * w * sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_NOCACHE, fd, 0);
         }
-        counts = (int**)malloc(d*sizeof(int*));
-        for(size_t i=0; i<d; ++i) {
-            counts[i] = flatcounts + i*w;
+        counts = (int**)malloc(d * sizeof(int*));
+        for (size_t i = 0; i < d; ++i) {
+            counts[i] = flatcounts + i * w;
         }
-    }
-    else {
+    } else {
         assert(filename == NULL);
-        sparse_counts.assign(d, map<uint64_t, int>());
+        // TODO: check the correctness: since the keys are from 0 to w-1, the size should be 2*w?
+        sparse_counts.resize(d, Hashtable(2 * w, 1337));
     }
     hash_seed.resize(d);
     mt19937_64 mt(seed);
     uniform_int_distribution<uint32_t> dist(0, (uint32_t)-1);
-    for(size_t i = 0; i < d; i++) {
-        hash_seed[i] = dist(mt);      // generate random seeds for hash function
+    for (size_t i = 0; i < d; i++) {
+        hash_seed[i] = dist(mt);        // generate random seeds for hash function
     }
 }
 
 void CountMin::update(uint64_t i, int c) {
-    if(!is_sparse) {
-        madvise(flatcounts, d*w*sizeof(int), MADV_DONTNEED);
-        for(size_t j = 0; j < d; j++) {
+    if (!is_sparse) {
+        for (size_t j = 0; j < d; j++) {
             counts[j][hash(i, hash_seed[j]) % w] += c;
         }
-    }
-    else {
-        for(size_t j=0; j<d; ++j) {
+    } else {
+        for (size_t j = 0; j < d; ++j) {
             sparse_counts[j][hash(i, hash_seed[j]) % w] += c;
         }
     }
@@ -118,29 +163,17 @@ void CountMin::update(uint64_t i, int c) {
 
 int CountMin::pointQuery(uint64_t i) const {
     int res = 0;
-    if(!is_sparse) {
+    if (!is_sparse) {
         res = counts[0][hash(i, hash_seed[0]) % w];
-        madvise(flatcounts, d*w*sizeof(int), MADV_DONTNEED);
-        for(size_t j = 1; j < d; j++) {
+        for (size_t j = 1; j < d; j++) {
             res = min(res, counts[j][hash(i, hash_seed[j]) % w]);
         }
-    }
-    else {
+    } else {
         auto it = sparse_counts[0].find(hash(i, hash_seed[0]) % w);
-        if(it == sparse_counts[0].end()) {
-            res = 0;
-        }
-        else {
-            res = it->second;
-        }
-        for(size_t j = 1; j < d; j++) {
+        res = max(0, it);
+        for (size_t j = 1; j < d; j++) {
             auto it = sparse_counts[j].find(hash(i, hash_seed[j]) % w);
-            if(it == sparse_counts[j].end()) {
-                res = min(res, 0);
-            }
-            else {
-                res = min(res, it->second);
-            }
+            res = min(res, max(0, it));
         }
     }
     return res;
@@ -149,16 +182,16 @@ int CountMin::pointQuery(uint64_t i) const {
 int CountMin::innerProductQuery(const CountMin &other) const { // sparse unimplemented
     const int** otherCounts = other.getCounts();
     int res = -1;
-    if(is_sparse) {
+    if (is_sparse) {
         fprintf(stderr, "NOT IMPLEMENTED\n");
         exit(0);
     }
-    for(size_t j = 0; j < d; j++) {
+    for (size_t j = 0; j < d; j++) {
         int current_res = 0;
-        for(size_t i = 0; i < w; i++) {
+        for (size_t i = 0; i < w; i++) {
             current_res += counts[j][i] * otherCounts[j][i];
         }
-        if(res == -1 || res > current_res) {
+        if (res == -1 || res > current_res) {
             res = current_res;
         }
     }
@@ -166,23 +199,25 @@ int CountMin::innerProductQuery(const CountMin &other) const { // sparse unimple
 }
 
 void CountMin::mergeCMs(const CountMin& other) {
-    if(is_sparse) {
+    if (is_sparse) {
         fprintf(stderr, "NOT IMPLEMENTED\n");
         exit(0);
     }
 
-    if(!other.is_sparse) {
+    if (!other.is_sparse) {
         const int** otherCounts = other.getCounts();
-        for(size_t i=0; i<d; ++i) {
-            for(size_t j=0; j<w; ++j) {
+        for (size_t i = 0; i < d; ++i) {
+            for (size_t j = 0; j < w; ++j) {
                 counts[i][j] += otherCounts[i][j];
             }
         }
-    }
-    else {
+    } else {
         const auto &otherSparseCounts = other.getSparseCounts();
-        for(size_t i=0; i<d; ++i) {
-            for(auto &it: otherSparseCounts[i]) {
+        for (size_t i = 0; i < d; ++i) {
+            for (const auto &it: otherSparseCounts[i].arr) {
+                if (it.first == (uint64_t)-1) {
+                    continue;
+                }
                 counts[i][it.first] += it.second;
             }
         }

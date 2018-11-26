@@ -1,11 +1,13 @@
+CXX = g++
+
 time_bench: MurmurHash3.h MurmurHash3.cpp cm.h time_bench.cpp 
-	g++ -O3 MurmurHash3.cpp time_bench.cpp -o time_bench -Wall
+	$(CXX) -O3 MurmurHash3.cpp time_bench.cpp -o time_bench -Wall
 
 error_bench: MurmurHash3.h MurmurHash3.cpp cm.h error_bench.cpp 
-	g++ -O3 MurmurHash3.cpp error_bench.cpp -o error_bench -Wall
+	$(CXX) -O3 MurmurHash3.cpp error_bench.cpp -o error_bench -Wall
 
 ssd_bench: MurmurHash3.h MurmurHash3.cpp cm.h ssd_bench.cpp
-	g++ -O3 MurmurHash3.cpp ssd_bench.cpp -o ssd_bench -Wall
+	$(CXX) -O3 MurmurHash3.cpp ssd_bench.cpp -o ssd_bench -Wall
 
 experiments: time_bench error_bench ssd_bench
 
