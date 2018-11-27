@@ -10,6 +10,8 @@ public:
     int pointQuery(uint64_t i) const;                            // return a_i
     int innerProductQuery(const CountMin &other) const;     // return a * b (inner product)
     void mergeCMs(const CountMin &other);
+    void mergeRawLog(const vector<pair<uint64_t, uint64_t>>& other, size_t u);
+
 
     uint64_t getWidth() const {
         return w;
@@ -98,6 +100,7 @@ int CountMin::pointQuery(uint64_t i) const {
         for(size_t j = 1; j < d; j++) {
             res = min(res, counts[j][hash(i, hash_seed[j]) % w]);
         }
+        return res;
     }
     else {
         auto it = sparse_counts[0].find(hash(i, hash_seed[0]) % w);
@@ -161,4 +164,25 @@ void CountMin::mergeCMs(const CountMin& other) {
             }
         }
     }
+}
+
+void CountMin::mergeRawLog(const vector<pair<uint64_t, uint64_t>>& other, size_t u) {
+    if (is_sparse) {
+        fprintf(stderr, "NOT IMPLEMENTED\n");
+        exit(0);
+    }
+      
+    for (size_t j = 0; j < u; j++) {
+        update(other[j].first, other[j].second);
+    }  
+}
+
+uint64_t updateRawLog(const vector<pair<uint64_t, uint64_t>> arr, uint64_t key, size_t u) {
+    for(size_t j=0; j<u; ++j) {
+        if(key==arr[j].first) {
+            return arr[j].second;
+        }
+    }
+    printf("bad\n");
+    return 0;
 }

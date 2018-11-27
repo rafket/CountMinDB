@@ -9,10 +9,13 @@ int main() {
     mt19937_64 mt(1337);
     uniform_int_distribution<uint32_t> dist(0, (uint32_t)-1);
     int n=100;
+    int u=10;
     printf("I will insert %d random elements\n", n);
     double epsilon=M_E/(10*n), delta=1/pow(M_E, 3);
-    printf("epsilon: %lf, delta: %lf\n", epsilon, delta);
+    double epsilon_u=M_E/(10*u);
+    printf("epsilon: %lf, epsilon_u: %lf, delta: %lf\n", epsilon, epsilon_u, delta);
     CountMin cm_normal(epsilon, delta, 1337, false);
+    CountMin cm_optimized(epsilon_u, delta, 1337, false);
 //    CountMin cm_sparse(epsilon, delta, 1337, true);
     map<uint64_t, int> arr;
 
