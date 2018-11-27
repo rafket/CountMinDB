@@ -12,7 +12,7 @@ int main(int argc, char** argv) {
     uniform_int_distribution<uint32_t> dist(0, (uint32_t)-1);
     int n=atoi(argv[1]), u=atoi(argv[2]), q=atoi(argv[3]);
     printf("I will have %d elements in the original data, insert %d random elements and perform %d random queries\n", n, u, q);
-    double epsilon=M_E/(1*n), delta=1/pow(M_E, 3);
+    double epsilon=M_E/(1*n), delta=1/pow(M_E, 10);
     double epsilon_u=M_E/(1*u);
     printf("epsilon: %lf, epsilon_u: %lf, delta: %lf\n", epsilon, epsilon_u, delta);
     CountMin cm_normal(epsilon, delta, 1337, false, "file.cm");
@@ -20,7 +20,6 @@ int main(int argc, char** argv) {
     CountMin cm_optimized(epsilon_u, delta, 1337, false);
     vector<pair<uint64_t, uint64_t> > arr(u);
     clock_t start, finish;
-
     start=clock();
     for(int i=0; i<u; ++i) {
         uint64_t key = dist(mt);

@@ -134,9 +134,9 @@ CountMin::CountMin(double eps, double delta, uint64_t seed, bool is_sparse = fal
             ftruncate(fd, d * w * sizeof(int));
             flatcounts = (int*)mmap(0, d * w * sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
         }
-        counts = (int**)malloc(d * sizeof(int*));
-        for (size_t i = 0; i < d; ++i) {
-            counts[i] = flatcounts + i * w;
+        counts = (int**)malloc(w * sizeof(int*));
+        for (size_t i = 0; i < w; ++i) {
+            counts[i] = flatcounts + i * d;
         }
     } else {
         assert(filename == NULL);
@@ -154,7 +154,7 @@ CountMin::CountMin(double eps, double delta, uint64_t seed, bool is_sparse = fal
 void CountMin::update(uint64_t i, int c) {
     if (!is_sparse) {
         for (size_t j = 0; j < d; j++) {
-            counts[j][hash(i, hash_seed[j]) % w] += c;
+            counts[hash(i, hash_seed[j]) % w][j] += c;
         }
     } else {
         for (size_t j = 0; j < d; ++j) {
@@ -166,9 +166,9 @@ void CountMin::update(uint64_t i, int c) {
 int CountMin::pointQuery(uint64_t i) const {
     int res = 0;
     if (!is_sparse) {
-        res = counts[0][hash(i, hash_seed[0]) % w];
+        res = counts[hash(i, hash_seed[0]) % w][0];
         for (size_t j = 1; j < d; j++) {
-            res = min(res, counts[j][hash(i, hash_seed[j]) % w]);
+            res = min(res, counts[hash(i, hash_seed[j]) % w][j]);
         }
         return res;
     }
@@ -193,7 +193,7 @@ int CountMin::innerProductQuery(const CountMin &other) const { // sparse unimple
     for (size_t j = 0; j < d; j++) {
         int current_res = 0;
         for (size_t i = 0; i < w; i++) {
-            current_res += counts[j][i] * otherCounts[j][i];
+            current_res += counts[i][j] * otherCounts[i][j];
         }
         if (res == -1 || res > current_res) {
             res = current_res;
@@ -210,21 +210,22 @@ void CountMin::mergeCMs(const CountMin& other) {
 
     if (!other.is_sparse) {
         const int** otherCounts = other.getCounts();
-        for (size_t i = 0; i < d; ++i) {
-            for (size_t j = 0; j < w; ++j) {
-                counts[i][j] += otherCounts[i][j];
+        for (size_t j = 0; j < w; ++j) {
+            for (size_t i = 0; i < d; ++i) {
+                counts[j][i] += otherCounts[j][i];
             }
         }
     } else {
         const auto &otherSparseCounts = other.getSparseCounts();
-        for (size_t i = 0; i < d; ++i) {
-            for (const auto &it: otherSparseCounts[i].arr) {
-                if (it.first == (uint64_t)-1) {
-                    continue;
+            for (size_t i = 0; i < d; ++i) {
+                for (const auto &it: otherSparseCounts[i].arr) {
+
+                    if (it.first == (uint64_t)-1) {
+                        continue;
+                    }
+                    counts[it.first][i] += it.second;
                 }
-                counts[i][it.first] += it.second;
-            }
-        }
+            }   
     }
 }
 
