@@ -15,9 +15,9 @@ int main(int argc, char** argv) {
     double epsilon=M_E/(1*n), delta=1/pow(M_E, 3);
     double epsilon_u=M_E/(1*u);
     printf("epsilon: %lf, epsilon_u: %lf, delta: %lf\n", epsilon, epsilon_u, delta);
-    CountMin cm_normal(epsilon, delta, 1337, false, "file.cm");
-    CountMin cm_sparse(epsilon, delta, 1337, true);
-    CountMin cm_optimized(epsilon_u, delta, 1337, false);
+    CountMin cm_normal(epsilon, delta, 1337, Uncompressed, "file.cm");
+    CountMin cm_sparse(epsilon, delta, 1337, HashTable);
+    CountMin cm_optimized(epsilon_u, delta, 1337, Uncompressed);
     vector<pair<uint64_t, uint64_t> > arr(u);
     clock_t start, finish;
 

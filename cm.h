@@ -57,9 +57,16 @@ struct Hashtable {
     }
 };
 
+enum storage_type {
+    Uncompressed,
+    HashTable,
+    Tree,
+    Other
+};
+
 class CountMin {
 public:
-    CountMin(double eps, double delta, uint64_t seed, bool is_sparse, const char* filename, string name);
+    CountMin(double eps, double delta, uint64_t seed, storage_type type, const char* filename, string name);
     ~CountMin();
     void update(uint64_t i, int c);                         // increase a_i by c
     int pointQuery(uint64_t i) const;                       // return a_i
@@ -84,21 +91,25 @@ public:
         return sparse_counts;
     }
 
-    bool isSparse() const {
-        return is_sparse;
+    bool storageType() const {
+        return type;
     }
 
     uint64_t getMem() {
-        if (!is_sparse) {
+        if (type == Uncompressed) {
             return w * d * sizeof(int)  /* size of the CM table */
                 + d * sizeof(uint32_t)  /* size of seed for hash function */;
         }
-        uint64_t out = 0;
-        for (size_t i = 0; i < d; ++i) {
-            out += sparse_counts[i].getMem();  // size of each hashtable
+        if (type == HashTable) {
+            uint64_t out = 0;
+            for (size_t i = 0; i < d; ++i) {
+                out += sparse_counts[i].getMem();  // size of each hashtable
+            }
+            out += d * sizeof(uint32_t);
+            return out;
         }
-        out += d * sizeof(uint32_t);
-        return out;
+        fprintf(stderr, "NOT IMPLEMENTED\n");
+        return -1;   
     }
 
 private:
@@ -106,7 +117,7 @@ private:
     vector<Hashtable> sparse_counts;
     vector<uint32_t> hash_seed;
     uint64_t w, d;
-    bool is_sparse;
+    storage_type type;
     char* filename;
     int fd;
     string name;
@@ -118,16 +129,16 @@ private:
     }
 };
 
-CountMin::CountMin(double eps, double delta, uint64_t seed, bool is_sparse = false, const char* filename = NULL, string name = "noname") {
-    this->is_sparse = is_sparse;
+CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = Uncompressed, const char* filename = NULL, string name = "noname") {
+    this->type = type;
     this->name = name;
     w = ceil(M_E / eps);
     d = ceil(log(1 / delta));
     printf("%s : w: %" PRIu64 ", d: %" PRIu64 "\n", name.c_str(), w, d);
-    if (!is_sparse) {
+    if (type == Uncompressed) {
         if (filename == NULL) {
-            this->filename = NULL;
-            flatcounts = new int[d*w]();
+                this->filename = NULL;
+                flatcounts = new int[d*w]();
         } else {
             // TODO: implement this
             this->filename = strdup(filename);
@@ -135,9 +146,14 @@ CountMin::CountMin(double eps, double delta, uint64_t seed, bool is_sparse = fal
             ftruncate(fd, d * w * sizeof(int));
             flatcounts = (int*)mmap(0, d * w * sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
         }
-    } else {
+    }
+    else if (type == HashTable) {
         assert(filename == NULL);
         sparse_counts.resize(d, Hashtable(2 * w, 1337));
+    }
+    else {
+        fprintf(stderr, "NOT IMPLEMENTED\n");
+        exit(0);
     }
     hash_seed.resize(d);
     mt19937_64 mt(seed);
@@ -158,40 +174,48 @@ CountMin::~CountMin() {
 }
 
 void CountMin::update(uint64_t i, int c) {
-    if (!is_sparse) {
+    if (type == Uncompressed) {
         for (size_t j = 0; j < d; j++) {
             flatcounts[j*w + hash(i, hash_seed[j]) % w] += c;
         }
-    } else {
+        return;
+    }
+    if (type == HashTable) {
         for (size_t j = 0; j < d; ++j) {
             sparse_counts[j][hash(i, hash_seed[j]) % w] += c;
         }
+        return;
     }
+    fprintf(stderr, "NOT IMPLEMENTED\n");
+    exit(0);
 }
 
 int CountMin::pointQuery(uint64_t i) const {
     int res = 0;
-    if (!is_sparse) {
+    if (type == Uncompressed) {
         res = flatcounts[hash(i, hash_seed[0]) % w];
         for (size_t j = 1; j < d; j++) {
             res = min(res, flatcounts[j*w + hash(i, hash_seed[j]) % w]);
         }
         return res;
-    } else {
+    }
+    if (type == HashTable) {
         auto it = sparse_counts[0].find(hash(i, hash_seed[0]) % w);
         res = max(0, it);
         for (size_t j = 1; j < d; j++) {
             auto it = sparse_counts[j].find(hash(i, hash_seed[j]) % w);
             res = min(res, max(0, it));
         }
+        return res;
     }
-    return res;
+    fprintf(stderr, "NOT IMPLEMENTED\n");
+    return -1;
 }
 
 int CountMin::innerProductQuery(const CountMin &other) const { // sparse unimplemented
     const int* otherCounts = other.getCounts();
     int res = -1;
-    if (is_sparse) {
+    if (type != Uncompressed) {
         fprintf(stderr, "NOT IMPLEMENTED\n");
         exit(0);
     }
@@ -208,19 +232,20 @@ int CountMin::innerProductQuery(const CountMin &other) const { // sparse unimple
 }
 
 void CountMin::mergeCMs(const CountMin& other) {
-    if (is_sparse) {
+    if (type != Uncompressed) {
         fprintf(stderr, "NOT IMPLEMENTED\n");
         exit(0);
     }
-
-    if (!other.is_sparse) {
+    if (other.type == Uncompressed) {
         const int* otherCounts = other.getCounts();
         for (size_t i = 0; i < d; ++i) {
             for (size_t j = 0; j < w; ++j) {
                 flatcounts[i*w + j] += otherCounts[i*w + j];
             }
         }
-    } else {
+        return;
+    }
+    if (other.type == HashTable) {
         const auto &otherSparseCounts = other.getSparseCounts();
         for (size_t i = 0; i < d; ++i) {
             for (const auto &it: otherSparseCounts[i].arr) {
@@ -230,12 +255,15 @@ void CountMin::mergeCMs(const CountMin& other) {
                 flatcounts[i*w + it.first] += it.second;
             }
         }
+        return;
     }
+    fprintf(stderr, "NOT IMPLEMENTED\n");
+    exit(0);
 }
 
 // merge the raw log into the count-min directly with a for loop
 void CountMin::mergeRawLog(const vector<pair<uint64_t, uint64_t>>& other, size_t u) {
-    if (is_sparse) {
+    if (type != Uncompressed) {
         fprintf(stderr, "NOT IMPLEMENTED\n");
         exit(0);
     }
