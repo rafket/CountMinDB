@@ -87,8 +87,12 @@ public:
         return (const int*)flatcounts;
     }
 
-    const vector<Hashtable> &getSparseCounts() const {
-        return sparse_counts;
+    const vector<Hashtable> &getHashTableCounts() const {
+        return hash_table_counts;
+    }
+
+    const  vector<map<uint64_t,int>> &getTreeCounts() const {
+        return tree_counts;
     }
 
     bool storageType() const {
@@ -103,7 +107,7 @@ public:
         if (type == HashTable) {
             uint64_t out = 0;
             for (size_t i = 0; i < d; ++i) {
-                out += sparse_counts[i].getMem();  // size of each hashtable
+                out += hash_table_counts[i].getMem();  // size of each hashtable
             }
             out += d * sizeof(uint32_t);
             return out;
@@ -114,7 +118,8 @@ public:
 
 private:
     int* flatcounts;
-    vector<Hashtable> sparse_counts;
+    vector<Hashtable> hash_table_counts;
+    vector<map<uint64_t,int>> tree_counts;
     vector<uint32_t> hash_seed;
     uint64_t w, d;
     storage_type type;
@@ -149,7 +154,11 @@ CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = 
     }
     else if (type == HashTable) {
         assert(filename == NULL);
-        sparse_counts.resize(d, Hashtable(2 * w, 1337));
+        hash_table_counts.resize(d, Hashtable(2 * w, 1337));
+    }
+    else if (type == Tree) {
+        assert(filename == NULL);
+        tree_counts.assign(d, map<uint64_t,int>());
     }
     else {
         fprintf(stderr, "NOT IMPLEMENTED\n");
@@ -182,7 +191,13 @@ void CountMin::update(uint64_t i, int c) {
     }
     if (type == HashTable) {
         for (size_t j = 0; j < d; ++j) {
-            sparse_counts[j][hash(i, hash_seed[j]) % w] += c;
+            hash_table_counts[j][hash(i, hash_seed[j]) % w] += c;
+        }
+        return;
+    }
+    if (type == Tree) {
+        for (size_t j = 0; j < d; ++j) {
+            tree_counts[j][hash(i, hash_seed[j]) % w] += c;
         }
         return;
     }
@@ -200,11 +215,30 @@ int CountMin::pointQuery(uint64_t i) const {
         return res;
     }
     if (type == HashTable) {
-        auto it = sparse_counts[0].find(hash(i, hash_seed[0]) % w);
+        auto it = hash_table_counts[0].find(hash(i, hash_seed[0]) % w);
         res = max(0, it);
         for (size_t j = 1; j < d; j++) {
-            auto it = sparse_counts[j].find(hash(i, hash_seed[j]) % w);
+            auto it = hash_table_counts[j].find(hash(i, hash_seed[j]) % w);
             res = min(res, max(0, it));
+        }
+        return res;
+    }
+    if (type == Tree) {
+        auto it = tree_counts[0].find(hash(i, hash_seed[0]) % w);
+        if (it == tree_counts[0].end()) {
+            res = 0;
+        }
+        else {
+            res = it->second;
+        }
+        for (size_t j = 1; j < d; j++) {
+            auto it = tree_counts[j].find(hash(i, hash_seed[j]) % w);
+            if (it == tree_counts[j].end()) {
+                res = min(res, 0);
+            }
+            else {
+                res = min(res, it->second);
+            }
         }
         return res;
     }
@@ -246,12 +280,21 @@ void CountMin::mergeCMs(const CountMin& other) {
         return;
     }
     if (other.type == HashTable) {
-        const auto &otherSparseCounts = other.getSparseCounts();
+        const auto &otherSparseCounts = other.getHashTableCounts();
         for (size_t i = 0; i < d; ++i) {
             for (const auto &it: otherSparseCounts[i].arr) {
                 if (it.first == (uint64_t)-1) {
                     continue;
                 }
+                flatcounts[i*w + it.first] += it.second;
+            }
+        }
+        return;
+    }
+    if (other.type == Tree) {
+        const auto &otherSparseCounts = other.getTreeCounts();
+        for (size_t i = 0; i < d; i++) {
+            for (auto &it: otherSparseCounts[i]) {
                 flatcounts[i*w + it.first] += it.second;
             }
         }

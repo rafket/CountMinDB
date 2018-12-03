@@ -13,9 +13,9 @@ int main(int argc, char** argv) {
         u = atoi(argv[2]),
         q = atoi(argv[3]);
     double epsilon = M_E/(10*n), delta = 1/pow(M_E, 3), epsilon_u = M_E/(10*u);
-    CountMin cm_ssd(epsilon, delta, 1337, false, "file.cm", "count-min on SSD");
-    CountMin cm_optimized(epsilon_u, delta, 1337, false, nullptr, "optimized count-min in RAM");
-    CountMin cm_sparse(epsilon, delta, 1337, true, nullptr, "sparse count-min in RAM");
+    CountMin cm_ssd(epsilon, delta, 1337, Uncompressed, "file.cm", "count-min on SSD");
+    CountMin cm_optimized(epsilon_u, delta, 1337, Uncompressed, nullptr, "optimized count-min in RAM");
+    CountMin cm_sparse(epsilon, delta, 1337, HashTable, nullptr, "sparse count-min in RAM");
 
         vector<pair<uint64_t, uint64_t> > arr(u);
     clock_t start, finish;
