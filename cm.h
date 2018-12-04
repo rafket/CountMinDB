@@ -1,13 +1,64 @@
 #ifndef CM_H
 #define CM_H
+#define CHUNKSIZE 64
 
 #include <bits/stdc++.h>
 #include <sys/mman.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include "MurmurHash3.h"
+#include "zlib.h"
 
 using namespace std;
+
+// decompress function from zlib (which uses adaptive Huffman coding apparently)
+int* zlib_decompress(char* chunk, size_t compressed_size, size_t uncompressed_size) {
+    int* output = new int[uncompressed_size]();
+
+    z_stream infstream;
+    infstream.zalloc = Z_NULL;
+    infstream.zfree = Z_NULL;
+    infstream.opaque = Z_NULL;
+    infstream.avail_in = (uInt) compressed_size;
+    infstream.next_in = (Bytef*) chunk;
+    infstream.avail_out = (uInt) (uncompressed_size * sizeof(int));
+    infstream.next_out = (Bytef*) output;
+
+    inflateInit(&infstream);
+    inflate(&infstream, Z_NO_FLUSH);
+    inflateEnd(&infstream); 
+
+    return output;
+}
+
+// compress function from zlib (which uses adaptive Huffman coding apparently)
+char* zlib_compress(int* count_array, size_t uncompressed_size) {
+    // start with 0.01 * the size
+    size_t compressed_size = uncompressed_size * 0.01;
+    char* chunk = NULL;
+    z_stream defstream;
+
+    int r = Z_BUF_ERROR;
+    // keep looping until we allocate the right amount for the compressed string
+    while (r != Z_STREAM_END) {
+        compressed_size *= 2;
+        if (chunk) delete[] chunk;
+        chunk = new char[compressed_size]();
+        defstream.zalloc = Z_NULL;
+        defstream.zfree = Z_NULL;
+        defstream.opaque = Z_NULL;
+        defstream.avail_in = (uInt) uncompressed_size;
+        defstream.next_in = (Bytef*) count_array;
+        defstream.avail_out = (uInt) compressed_size;
+        defstream.next_out = (Bytef*) chunk;
+        deflateInit(&defstream, Z_BEST_COMPRESSION);
+        r = deflate(&defstream, Z_FINISH);
+        deflateEnd(&defstream);
+    }
+    printf("%d\n", compressed_size);
+    return chunk;
+}
+
 
 struct Hashtable {
     uint32_t seed;
@@ -61,7 +112,8 @@ enum storage_type {
     Uncompressed,
     HashTable,
     Tree,
-    Other
+    BufferedVersion,
+    ChunksZlib
 };
 
 class CountMin {
@@ -117,15 +169,19 @@ public:
     }
 
 private:
-    int* flatcounts;
-    vector<Hashtable> hash_table_counts;
-    vector<map<uint64_t,int>> tree_counts;
     vector<uint32_t> hash_seed;
     uint64_t w, d;
     storage_type type;
     char* filename;
     int fd;
     string name;
+
+    // storage formats
+    int* flatcounts; // uncompressed
+    vector<Hashtable> hash_table_counts; //hash table
+    vector<map<uint64_t,int>> tree_counts; // tree
+    char*** chunks_zlib; // zlib chunk
+    // size_t sizes_uncompre
 
     uint64_t hash(uint64_t key, uint32_t seed) const {
         uint64_t out[2];
@@ -160,6 +216,14 @@ CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = 
         assert(filename == NULL);
         tree_counts.assign(d, map<uint64_t,int>());
     }
+    // else if (type == ChunksZlib) {
+    //     assert(filename == NULL);
+    //     size_t num_chunks = 5;
+    //     chunks_zlib = new char**[d]();
+    //     for (size_t i = 0; i < d; i++) {
+    //         chunks_zlib[i] = new char*[num_chunks]();
+    //     }
+    // }
     else {
         fprintf(stderr, "NOT IMPLEMENTED\n");
         exit(0);
@@ -200,6 +264,23 @@ void CountMin::update(uint64_t i, int c) {
             tree_counts[j][hash(i, hash_seed[j]) % w] += c;
         }
         return;
+    }
+    if (type == ChunksZlib) {
+        // for (size_t j = 0; j < d; j++) {
+        //     size_t index =  hash(i, hash_seed[j]) % w;
+        //     size_t chunk_block = 0; // find out which chunk block it is in
+        //     size_t chunk_index = 0; // find out which chunk index it is in the block
+        //     int* inflated; 
+        //     if (chunks_zlib[j][chunk_block]) {
+        //         inflated = inflate(chunks_zlib[j][chunk_block], CHUNKSIZE);
+        //     }
+        //     else {
+        //         inflated = new int[CHUNKSIZE]();
+        //     }
+        //     inflated[chunk_index] += c;
+        //     chunks_zlib[j][chunk_block] = deflate(inflated, CHUNKSIZE);
+        // }
+        // return;
     }
     fprintf(stderr, "NOT IMPLEMENTED\n");
     exit(0);
