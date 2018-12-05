@@ -34,7 +34,7 @@ int* zlib_decompress(char* chunk, size_t compressed_size, size_t uncompressed_si
 // compress function from zlib (which uses adaptive Huffman coding apparently)
 size_t zlib_compress(int* count_array, size_t uncompressed_size, char** array) {
     // start with 0.01 * the size for now
-    size_t compressed_size = max(1.0, uncompressed_size * 0.01);
+    size_t compressed_size = max(1.0, uncompressed_size * 0.1);
     char* chunk = NULL;
     z_stream defstream;
 
@@ -51,7 +51,10 @@ size_t zlib_compress(int* count_array, size_t uncompressed_size, char** array) {
         defstream.next_in = (Bytef*) count_array;
         defstream.avail_out = (uInt) compressed_size;
         defstream.next_out = (Bytef*) chunk;
-        deflateInit(&defstream, Z_BEST_COMPRESSION);
+        // can choose different parameter settings
+       // deflateInit(&defstream, Z_BEST_COMPRESSION);
+        deflateInit(&defstream, Z_BEST_SPEED);
+        // deflateInit(&defstream, Z_NO_COMPRESSION);
         r = deflate(&defstream, Z_FINISH);
         deflateEnd(&defstream);
     }
@@ -416,6 +419,7 @@ void CountMin::mergeCMs(const CountMin& other) {
         }
         return;
     }
+
     fprintf(stderr, "NOT IMPLEMENTED\n");
     exit(0);
 }
