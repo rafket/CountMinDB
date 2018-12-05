@@ -18,7 +18,7 @@ int main(int argc, char** argv) {
     CountMin cm_normal(epsilon, delta, 1337, Uncompressed, "file.cm");
     CountMin cm_hashtable(epsilon, delta, 1337, HashTable);
     CountMin cm_tree(epsilon, delta, 1337, Tree);
-    CountMin cm_zlib(epsilon, delta, 1337, Tree);
+    CountMin cm_zlib(epsilon, delta, 1337, ChunksZlib);
 
     // CountMin cm_optimized(epsilon_u, delta, 1337, Uncompressed);
     vector<pair<uint64_t, uint64_t> > arr(u);

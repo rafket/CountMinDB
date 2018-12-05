@@ -225,12 +225,12 @@ CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = 
         if (w % CHUNKSIZE != 0) {
             num_chunks++;
         }
-        printf("num chunks: %d\n", num_chunks);
+        // printf("num chunks:%d\n", num_chunks);
         chunks_zlib = new char**[d]();
-        // compressed_sizes = new size_t*[d]();
+        compressed_sizes = new size_t*[d]();
         for (size_t i = 0; i < d; i++) {
             chunks_zlib[i] = new char*[num_chunks]();
-            // compressed_sizes[i] = new size_t[num_chunks](); 
+            compressed_sizes[i] = new size_t[num_chunks](); 
         }
     }
     else {
