@@ -1,6 +1,6 @@
 #ifndef CM_H
 #define CM_H
-#define CHUNKSIZE 64
+#define CHUNKSIZE 1024
 
 #include <bits/stdc++.h>
 #include <sys/mman.h>
@@ -21,7 +21,7 @@ int* zlib_decompress(char* chunk, size_t compressed_size, size_t uncompressed_si
     infstream.opaque = Z_NULL;
     infstream.avail_in = (uInt) compressed_size;
     infstream.next_in = (Bytef*) chunk;
-    infstream.avail_out = (uInt) (uncompressed_size * sizeof(int));
+    infstream.avail_out = (uInt) (uncompressed_size);
     infstream.next_out = (Bytef*) output;
 
     inflateInit(&infstream);
@@ -32,9 +32,9 @@ int* zlib_decompress(char* chunk, size_t compressed_size, size_t uncompressed_si
 }
 
 // compress function from zlib (which uses adaptive Huffman coding apparently)
-char* zlib_compress(int* count_array, size_t uncompressed_size) {
-    // start with 0.01 * the size
-    size_t compressed_size = uncompressed_size * 0.01;
+size_t zlib_compress(int* count_array, size_t uncompressed_size, char** array) {
+    // start with 0.01 * the size for now
+    size_t compressed_size = max(1.0, uncompressed_size * 0.01);
     char* chunk = NULL;
     z_stream defstream;
 
@@ -55,8 +55,9 @@ char* zlib_compress(int* count_array, size_t uncompressed_size) {
         r = deflate(&defstream, Z_FINISH);
         deflateEnd(&defstream);
     }
-    printf("%d\n", compressed_size);
-    return chunk;
+    // printf("compressed size: %d, uncompressed size: %d\n", compressed_size, uncompressed_size);
+    *array = chunk;
+    return compressed_size;
 }
 
 
@@ -181,7 +182,9 @@ private:
     vector<Hashtable> hash_table_counts; //hash table
     vector<map<uint64_t,int>> tree_counts; // tree
     char*** chunks_zlib; // zlib chunk
-    // size_t sizes_uncompre
+    size_t num_chunks; // number of chunks in each row
+    size_t** compressed_sizes; // sizes of compressed  
+
 
     uint64_t hash(uint64_t key, uint32_t seed) const {
         uint64_t out[2];
@@ -216,14 +219,20 @@ CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = 
         assert(filename == NULL);
         tree_counts.assign(d, map<uint64_t,int>());
     }
-    // else if (type == ChunksZlib) {
-    //     assert(filename == NULL);
-    //     size_t num_chunks = 5;
-    //     chunks_zlib = new char**[d]();
-    //     for (size_t i = 0; i < d; i++) {
-    //         chunks_zlib[i] = new char*[num_chunks]();
-    //     }
-    // }
+    else if (type == ChunksZlib) {
+        assert(filename == NULL);
+        num_chunks = (w / CHUNKSIZE);
+        if (w % CHUNKSIZE != 0) {
+            num_chunks++;
+        }
+        printf("num chunks: %d\n", num_chunks);
+        chunks_zlib = new char**[d]();
+        // compressed_sizes = new size_t*[d]();
+        for (size_t i = 0; i < d; i++) {
+            chunks_zlib[i] = new char*[num_chunks]();
+            // compressed_sizes[i] = new size_t[num_chunks](); 
+        }
+    }
     else {
         fprintf(stderr, "NOT IMPLEMENTED\n");
         exit(0);
@@ -266,21 +275,28 @@ void CountMin::update(uint64_t i, int c) {
         return;
     }
     if (type == ChunksZlib) {
-        // for (size_t j = 0; j < d; j++) {
-        //     size_t index =  hash(i, hash_seed[j]) % w;
-        //     size_t chunk_block = 0; // find out which chunk block it is in
-        //     size_t chunk_index = 0; // find out which chunk index it is in the block
-        //     int* inflated; 
-        //     if (chunks_zlib[j][chunk_block]) {
-        //         inflated = inflate(chunks_zlib[j][chunk_block], CHUNKSIZE);
-        //     }
-        //     else {
-        //         inflated = new int[CHUNKSIZE]();
-        //     }
-        //     inflated[chunk_index] += c;
-        //     chunks_zlib[j][chunk_block] = deflate(inflated, CHUNKSIZE);
-        // }
-        // return;
+        for (size_t j = 0; j < d; j++) {
+            size_t index =  hash(i, hash_seed[j]) % w; // find out where the hash lives
+            size_t chunk_block = (index / CHUNKSIZE); // find out which chunk block it is in
+            size_t chunk_index = index % CHUNKSIZE; // find out which chunk index it is in the block
+            size_t chunk_size = CHUNKSIZE; // size of uncompressed block
+            // if it's the last block it may be smaller
+            if (chunk_block == num_chunks - 1) {
+                chunk_size = w % CHUNKSIZE;
+            }
+            int* inflated; 
+            if (chunks_zlib[j][chunk_block]) {
+                inflated = zlib_decompress(chunks_zlib[j][chunk_block], compressed_sizes[j][chunk_block], chunk_size * sizeof(int));
+                delete[] chunks_zlib[j][chunk_block];
+            }
+            else {
+                inflated = new int[CHUNKSIZE]();
+            }
+            inflated[chunk_index] += c;
+            compressed_sizes[j][chunk_block] = zlib_compress(inflated, chunk_size * sizeof(int), &chunks_zlib[j][chunk_block]);
+            delete[] inflated;
+        }
+        return;
     }
     fprintf(stderr, "NOT IMPLEMENTED\n");
     exit(0);
@@ -320,6 +336,25 @@ int CountMin::pointQuery(uint64_t i) const {
             else {
                 res = min(res, it->second);
             }
+        }
+        return res;
+    }
+    if (type == ChunksZlib) {
+        for (size_t j = 0; j < d; j++) {
+            size_t index =  hash(i, hash_seed[j]) % w; // find out where the hash lives
+            size_t chunk_block = (index / CHUNKSIZE); // find out which chunk block it is in
+            size_t chunk_index = index % CHUNKSIZE; // find out which chunk index it is in the block
+            size_t chunk_size = CHUNKSIZE; // size of uncompressed block
+            if (!chunks_zlib[j][chunk_block]) return 0;
+            // if it's the last block it may be smaller
+            if (chunk_block == num_chunks - 1) {
+                chunk_size = w % CHUNKSIZE;
+            }
+            int* inflated; 
+            inflated = zlib_decompress(chunks_zlib[j][chunk_block], compressed_sizes[j][chunk_block], chunk_size * sizeof(int));
+            if (j == 0) res = inflated[chunk_index];
+            res = min(res, inflated[chunk_index]);
+            delete[] inflated;
         }
         return res;
     }

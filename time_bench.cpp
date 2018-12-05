@@ -13,11 +13,14 @@ int main(int argc, char** argv) {
     int n=atoi(argv[1]), u=atoi(argv[2]), q=atoi(argv[3]);
     printf("I will have %d elements in the original data, insert %d random elements and perform %d random queries\n", n, u, q);
     double epsilon=M_E/(1*n), delta=1/pow(M_E, 3);
-    double epsilon_u=M_E/(1*u);
+    double epsilon_u=M_E/(10*u);
     printf("epsilon: %lf, epsilon_u: %lf, delta: %lf\n", epsilon, epsilon_u, delta);
     CountMin cm_normal(epsilon, delta, 1337, Uncompressed, "file.cm");
-    CountMin cm_sparse(epsilon, delta, 1337, HashTable);
-    CountMin cm_optimized(epsilon_u, delta, 1337, Uncompressed);
+    CountMin cm_hashtable(epsilon, delta, 1337, HashTable);
+    CountMin cm_tree(epsilon, delta, 1337, Tree);
+    CountMin cm_zlib(epsilon, delta, 1337, Tree);
+
+    // CountMin cm_optimized(epsilon_u, delta, 1337, Uncompressed);
     vector<pair<uint64_t, uint64_t> > arr(u);
     clock_t start, finish;
 
@@ -31,25 +34,45 @@ int main(int argc, char** argv) {
     printf("building normal countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
     printf("normal countMin takes up %lfMB\n", (double)cm_normal.getMem()/1024/1024);
 
-    start=clock();
-    for(int i=0; i<u; ++i) {
-        uint64_t key = dist(mt);
-        uint64_t value = 10;
-        cm_optimized.update(key, value);
-    }
-    finish=clock();
-    printf("building optimized countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
-    printf("optimized countMin takes up %lfMB\n", (double)cm_optimized.getMem()/1024/1024);
+    // start=clock();
+    // for(int i=0; i<u; ++i) {
+    //     uint64_t key = dist(mt);
+    //     uint64_t value = 10;
+    //     cm_optimized.update(key, value);
+    // }
+    // finish=clock();
+    // printf("building optimized countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
+    // printf("optimized countMin takes up %lfMB\n", (double)cm_optimized.getMem()/1024/1024);
 
     start=clock();
     for(int i=0; i<u; ++i) {
         uint64_t key = dist(mt);
         uint64_t value = 10;
-        cm_sparse.update(key, value);
+        cm_hashtable.update(key, value);
     }
     finish=clock();
-    printf("building sparse countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
-    printf("sparse countMin takes up %lfMB\n", (double)cm_sparse.getMem()/1024/1024);
+    printf("building hash table countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
+    printf("hash table countMin takes up %lfMB\n", (double)cm_hashtable.getMem()/1024/1024);
+
+    start=clock();
+    for(int i=0; i<u; ++i) {
+        uint64_t key = dist(mt);
+        uint64_t value = 10;
+        cm_tree.update(key, value);
+    }
+    finish=clock();
+    printf("building treecountMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
+    // printf("tree countMin takes up %lfMB\n", (double)cm_tree.getMem()/1024/1024);
+
+    start=clock();
+    for(int i=0; i<u; ++i) {
+        uint64_t key = dist(mt);
+        uint64_t value = 10;
+        cm_zlib.update(key, value);
+    }
+    finish=clock();
+    printf("building zlib countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
+    // printf("zlib countMin takes up %lfMB\n", (double)cm_zlib.getMem()/1024/1024);
 
     start=clock();
     for(int i=0; i<u; ++i) {
@@ -63,12 +86,12 @@ int main(int argc, char** argv) {
 
     uint64_t sum1=0, sum2=0, sum3=0, sum4=0;
 
-    start=clock();
-    for(int i=0; i<q; ++i) {
-        sum4 += cm_optimized.pointQuery(dist(mt));
-    }
-    finish=clock();
-    printf("querying optimized countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
+    // start=clock();
+    // for(int i=0; i<q; ++i) {
+    //     sum4 += cm_optimized.pointQuery(dist(mt));
+    // }
+    // finish=clock();
+    // printf("querying optimized countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
 
     start=clock();
     for(int i=0; i<q; ++i) {
@@ -79,10 +102,27 @@ int main(int argc, char** argv) {
 
     start=clock();
     for(int i=0; i<q; ++i) {
-        sum2 += cm_sparse.pointQuery(dist(mt));
+        sum2 += cm_hashtable.pointQuery(dist(mt));
     }
     finish=clock();
-    printf("querying sparse countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
+    printf("querying hash table countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
+
+
+    start=clock();
+    for(int i=0; i<q; ++i) {
+        sum2 += cm_tree.pointQuery(dist(mt));
+    }
+    finish=clock();
+    printf("querying tree countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
+
+
+    start=clock();
+    for(int i=0; i<q; ++i) {
+        sum2 += cm_zlib.pointQuery(dist(mt));
+    }
+    finish=clock();
+    printf("querying zlib countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
+
 
     start=clock();
     for(int i=0; i<q; ++i) {
@@ -94,10 +134,26 @@ int main(int argc, char** argv) {
 
     // merging with the sparse count min
     start=clock();
-    cm_normal.mergeCMs(cm_sparse);
+    cm_normal.mergeCMs(cm_hashtable);
     finish=clock();
 
-    printf("Merging sparse countmin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
+    printf("Merging hash table countmin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
+
+
+    // merging with the sparse count min
+    start=clock();
+    cm_normal.mergeCMs(cm_tree);
+    finish=clock();
+
+    printf("Merging tree countmin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
+
+
+    // // // merging with the sparse count min
+    // // start=clock();
+    // // cm_normal.mergeCMs(cm_zlib);
+    // // finish=clock();
+
+    // // printf("Merging zlibcountmin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
 
     // merging with the raw log
     start=clock();
