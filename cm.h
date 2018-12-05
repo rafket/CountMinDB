@@ -34,7 +34,7 @@ int* zlib_decompress(char* chunk, size_t compressed_size, size_t uncompressed_si
 // compress function from zlib (which uses adaptive Huffman coding apparently)
 size_t zlib_compress(int* count_array, size_t uncompressed_size, char** array) {
     // start with 0.01 * the size for now
-    size_t compressed_size = max(1.0, uncompressed_size * 0.1);
+    size_t compressed_size = max(1.0, uncompressed_size * 0.01);
     char* chunk = NULL;
     z_stream defstream;
 
@@ -122,7 +122,7 @@ enum storage_type {
 
 class CountMin {
 public:
-    CountMin(double eps, double delta, uint64_t seed, storage_type type, const char* filename, string name);
+    CountMin(double eps, double delta, uint64_t seed, storage_type type, uint64_t num_updates, const char* filename, string name);
     ~CountMin();
     void update(uint64_t i, int c);                         // increase a_i by c
     int pointQuery(uint64_t i) const;                       // return a_i
@@ -168,6 +168,15 @@ public:
             out += d * sizeof(uint32_t);
             return out;
         }
+        if (type == ChunksZlib) {
+            uint64_t out = 0;
+            for (size_t i = 0; i < d; i++) {
+                for (size_t j = 0; j < num_chunks; j++) {
+                    out += compressed_sizes[i][j];
+                }
+            }
+            return out;
+        }
         fprintf(stderr, "NOT IMPLEMENTED\n");
         return -1;   
     }
@@ -186,7 +195,7 @@ private:
     vector<map<uint64_t,int>> tree_counts; // tree
     char*** chunks_zlib; // zlib chunk
     size_t num_chunks; // number of chunks in each row
-    size_t** compressed_sizes; // sizes of compressed  
+    size_t** compressed_sizes; // sizes of compressed chunks
 
 
     uint64_t hash(uint64_t key, uint32_t seed) const {
@@ -196,7 +205,7 @@ private:
     }
 };
 
-CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = Uncompressed, const char* filename = NULL, string name = "noname") {
+CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = Uncompressed, uint64_t num_updates = 0, const char* filename = NULL, string name = "noname") {
     this->type = type;
     this->name = name;
     w = ceil(M_E / eps);
@@ -216,7 +225,7 @@ CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = 
     }
     else if (type == HashTable) {
         assert(filename == NULL);
-        hash_table_counts.resize(d, Hashtable(2 * w, 1337));
+        hash_table_counts.resize(d, Hashtable(max(num_updates, (uint64_t) 100), 1337));
     }
     else if (type == Tree) {
         assert(filename == NULL);

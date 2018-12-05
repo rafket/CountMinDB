@@ -29,15 +29,18 @@ int main(int argc, char** argv) {
     double epsilon=M_E/(10*n), delta=1/pow(M_E, 3);
     double epsilon_u=M_E/(10*u);
     printf("epsilon: %lf, epsilon_u: %lf, delta: %lf\n", epsilon, epsilon_u, delta);
-    CountMin cm_normal(epsilon, delta, 1337, Uncompressed);
-    CountMin cm_optimized(epsilon_u, delta, 1337, Uncompressed);
+    CountMin cm_normal(epsilon, delta, 1337, Uncompressed, u);
+    CountMin cm_optimized(epsilon_u, delta, 1337, Uncompressed, u);
+    CountMin cm_compressed(epsilon, delta, 1337, ChunksZlib, u);
     map<uint64_t, int> arr;
 
-    for(int i=0; i<n; ++i) {
+    for(int i=0; i<u; ++i) {
         uint64_t key = dist(mt);
         uint64_t value = dist(mt);
         cm_normal.update(key, value);
         cm_optimized.update(key, value);
+        cm_compressed.update(key, value);
+        // printf("update: %d, %d\n", key, value);
         arr[key] += value;
     }
 
@@ -49,6 +52,11 @@ int main(int argc, char** argv) {
             err_normal/=((uint32_t)-1)/cnt_error_normal.size()/2;
         }
         ++cnt_error_normal[err_normal];
+
+        // printf("key: %d, %d\n", cm_normal.pointQuery(key), cm_compressed.pointQuery(key));
+
+
+        assert(cm_normal.pointQuery(key) == cm_compressed.pointQuery(key));
 
         uint32_t err_optimized = abs(cm_optimized.pointQuery(key)-arr[key]);
         if(err_optimized>0) {
