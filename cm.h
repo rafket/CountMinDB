@@ -23,7 +23,6 @@ int* zlib_decompress(char* chunk, size_t compressed_size, size_t uncompressed_si
     infstream.next_in = (Bytef*) chunk;
     infstream.avail_out = (uInt) (uncompressed_size);
     infstream.next_out = (Bytef*) output;
-
     inflateInit(&infstream);
     inflate(&infstream, Z_NO_FLUSH);
     inflateEnd(&infstream); 
@@ -160,6 +159,11 @@ public:
         return compressed_sizes;
     }
 
+    size_t getNumChunks() const {
+        return num_chunks;
+    }
+
+
     bool storageType() const {
         return type;
     }
@@ -271,7 +275,7 @@ CountMin::~CountMin() {
         munmap(flatcounts, w*d*sizeof(int));
         close(fd);
         unlink(filename); // Files should not be persistent in experiments
-    } else {
+    } else if (type == Uncompressed) {
         delete[] flatcounts;
     }
 }
@@ -416,12 +420,13 @@ int CountMin::innerProductQuery(const CountMin &other) const {
         if (other.type == ChunksZlib) {
             char*** chunks = other.getChunkZlibCompressions();
             size_t** sizes = other.getCompressedSizes();
+            size_t number_chunks = other.getNumChunks();
             size_t chunk_size = CHUNKSIZE;
-            for (size_t j = 0; j < num_chunks; j++) {
+            for (size_t j = 0; j < number_chunks; j++) {
                 for (size_t i = 0; i < d; i++) {
                     chunk_size = CHUNKSIZE;
                     if (chunks[i][j]) {
-                        if (j == num_chunks - 1) {
+                        if (j == number_chunks - 1) {
                             chunk_size = w % CHUNKSIZE;
                         }
                         int* inflated; 
@@ -436,11 +441,13 @@ int CountMin::innerProductQuery(const CountMin &other) const {
         }
     }
     else if (type == HashTable && other.type == HashTable) {
-        const auto &otherSparseCounts = other.getTreeCounts();
+        const auto &otherSparseCounts = other.getHashTableCounts();
         for (size_t j = 0; j < d; j++) {
-            for (const auto &it: otherSparseCounts[j]) {
-                size_t index = hash(it.first, hash_seed[j]) % w;
-                auto val = hash_table_counts[j].find(index);
+            for (const auto it: otherSparseCounts[j].arr) {
+                if (it.first == (uint64_t)-1) {
+                    continue;
+                }
+                auto val = hash_table_counts[j].find(it.first);
                 totals[j] += max(0, val) * it.second;
             }
         }
@@ -448,9 +455,8 @@ int CountMin::innerProductQuery(const CountMin &other) const {
     else if (type == Tree && other.type == Tree) {
         const auto &otherSparseCounts = other.getTreeCounts();
             for (size_t j = 0; j < d; j++) {
-                for (const auto &it: otherSparseCounts[j]) {
-                    size_t index = hash(it.first, hash_seed[j]) % w;
-                    auto val = tree_counts[j].find(index);
+                for (const auto it: otherSparseCounts[j]) {
+                    auto val = tree_counts[j].find(it.first);
                     if (val != tree_counts[j].end()) {
                         totals[j] += val->second * it.second;
                     }
@@ -531,14 +537,15 @@ void CountMin::mergeCMs(const CountMin& other) {
     if (other.type == ChunksZlib) {
         char*** chunks = other.getChunkZlibCompressions();
         size_t** sizes = other.getCompressedSizes();
+        size_t number_chunks = other.getNumChunks();
         size_t chunk_size = CHUNKSIZE;
         for (size_t i = 0; i < d; i++) {
-            for (size_t j = 0; j < num_chunks; j++) {
+            for (size_t j = 0; j < number_chunks; j++) {
                 chunk_size = CHUNKSIZE;
+                if (j == number_chunks - 1) {
+                    chunk_size = w % CHUNKSIZE;
+                }
                 if (chunks[i][j]) {
-                    if (j == num_chunks - 1) {
-                        chunk_size = w % CHUNKSIZE;
-                    }
                     int* inflated; 
                     inflated = zlib_decompress(chunks[i][j], sizes[i][j], chunk_size * sizeof(int));
                     for (size_t k = 0; k < chunk_size; k++) {
@@ -548,6 +555,7 @@ void CountMin::mergeCMs(const CountMin& other) {
                 }
             }
         }
+        return;
     }
 
     fprintf(stderr, "NOT IMPLEMENTED\n");
@@ -637,5 +645,10 @@ uint64_t queryRawLog(const vector<pair<uint64_t, uint64_t>>& arr, uint64_t key, 
     }
     return 0;
 }
+
+// // function for inner product querying two raw logs
+// uint64_t innerProductQueryRawLogs(const vector<pair<uint64_t, uint64_t>>& arr, const vector<pair<uint64_t, uint64_t>>& arr, uint64_t key, size_t u) {
+//     // need to implement
+// }
 
 #endif

@@ -19,8 +19,8 @@ int main(int argc, char** argv) {
     CountMin cm_hashtable(epsilon, delta, 1337, HashTable, u);
     CountMin cm_tree(epsilon, delta, 1337, Tree, u);
     CountMin cm_zlib(epsilon, delta, 1337, ChunksZlib, u);
+    CountMin cm_optimized(epsilon_u, delta, 1337, Uncompressed);
 
-    // CountMin cm_optimized(epsilon_u, delta, 1337, Uncompressed);
     vector<pair<uint64_t, uint64_t> > arr(u);
     clock_t start, finish;
 
@@ -34,15 +34,15 @@ int main(int argc, char** argv) {
     printf("building normal countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
     printf("normal countMin takes up %lfMB\n", (double)cm_normal.getMem()/1024/1024);
 
-    // start=clock();
-    // for(int i=0; i<u; ++i) {
-    //     uint64_t key = dist(mt);
-    //     uint64_t value = 10;
-    //     cm_optimized.update(key, value);
-    // }
-    // finish=clock();
-    // printf("building optimized countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
-    // printf("optimized countMin takes up %lfMB\n", (double)cm_optimized.getMem()/1024/1024);
+    start=clock();
+    for(int i=0; i<u; ++i) {
+        uint64_t key = dist(mt);
+        uint64_t value = 10;
+        cm_optimized.update(key, value);
+    }
+    finish=clock();
+    printf("building optimized countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
+    printf("optimized countMin takes up %lfMB\n", (double)cm_optimized.getMem()/1024/1024);
 
     start=clock();
     for(int i=0; i<u; ++i) {
@@ -84,25 +84,25 @@ int main(int argc, char** argv) {
     printf("building buffer took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
     printf("buffer takes up %lfMB\n", (double)arr.size()*(sizeof(uint64_t)+sizeof(uint64_t))/1024/1024);
 
-    uint64_t sum1=0, sum2=0, sum3=0, sum4=0;
-
-    // start=clock();
-    // for(int i=0; i<q; ++i) {
-    //     sum4 += cm_optimized.pointQuery(dist(mt));
-    // }
-    // finish=clock();
-    // printf("querying optimized countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
+    uint64_t sum1=0, sum2=0, sum3=0, sum4=0, sum5=0,sum6=0;
 
     start=clock();
     for(int i=0; i<q; ++i) {
-        sum1 += cm_normal.pointQuery(dist(mt));
+        sum1 += cm_optimized.pointQuery(dist(mt));
+    }
+    finish=clock();
+    printf("querying optimized countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
+
+    start=clock();
+    for(int i=0; i<q; ++i) {
+        sum2 += cm_normal.pointQuery(dist(mt));
     }
     finish=clock();
     printf("querying normal countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
 
     start=clock();
     for(int i=0; i<q; ++i) {
-        sum2 += cm_hashtable.pointQuery(dist(mt));
+        sum3 += cm_hashtable.pointQuery(dist(mt));
     }
     finish=clock();
     printf("querying hash table countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
@@ -110,7 +110,7 @@ int main(int argc, char** argv) {
 
     start=clock();
     for(int i=0; i<q; ++i) {
-        sum2 += cm_tree.pointQuery(dist(mt));
+        sum4 += cm_tree.pointQuery(dist(mt));
     }
     finish=clock();
     printf("querying tree countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
@@ -118,7 +118,7 @@ int main(int argc, char** argv) {
 
     start=clock();
     for(int i=0; i<q; ++i) {
-        sum2 += cm_zlib.pointQuery(dist(mt));
+        sum5 += cm_zlib.pointQuery(dist(mt));
     }
     finish=clock();
     printf("querying zlib countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
@@ -126,34 +126,34 @@ int main(int argc, char** argv) {
 
     start=clock();
     for(int i=0; i<q; ++i) {
-        sum3 += queryRawLog(arr, dist(mt), u);
+        sum6 += queryRawLog(arr, dist(mt), u);
     }
-    // printf("pay no attention to these numbers: %lu %lu %lu %lu\n", sum1, sum2, sum3, sum4);
+    printf("pay no attention to these numbers: %lu %lu %lu %lu %lu %lu\n", sum1, sum2, sum3, sum4, sum5, sum6);
     finish=clock();
     printf("querying buffer took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
 
-    // // merging with the sparse count min
-    // start=clock();
-    // cm_normal.mergeCMs(cm_hashtable);
-    // finish=clock();
+    // merging with the sparse count min
+    start=clock();
+    cm_normal.mergeCMs(cm_hashtable);
+    finish=clock();
 
-    // printf("Merging hash table countmin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
-
-
-    // // merging with the sparse count min
-    // start=clock();
-    // cm_normal.mergeCMs(cm_tree);
-    // finish=clock();
-
-    // printf("Merging tree countmin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
+    printf("Merging hash table countmin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
 
 
-    // // // merging with the sparse count min
-    // // start=clock();
-    // // cm_normal.mergeCMs(cm_zlib);
-    // // finish=clock();
+    // merging with the sparse count min
+    start=clock();
+    cm_normal.mergeCMs(cm_tree);
+    finish=clock();
 
-    // // printf("Merging zlibcountmin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
+    printf("Merging tree countmin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
+
+
+    // merging with the sparse count min
+    start=clock();
+    cm_normal.mergeCMs(cm_zlib);
+    finish=clock();
+
+    printf("Merging zlibcountmin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
 
     // merging with the raw log
     start=clock();
