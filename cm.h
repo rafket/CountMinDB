@@ -129,6 +129,7 @@ public:
     int innerProductQuery(const CountMin &other) const;     // return a * b (inner product)
     void mergeCMs(const CountMin &other);
     void mergeRawLog(const vector<pair<uint64_t, uint64_t>>& other, size_t u);
+    int innerProductQueryRawLog(const vector<pair<uint64_t, uint64_t>>& other, size_t u);
 
 
     uint64_t getWidth() const {
@@ -149,6 +150,14 @@ public:
 
     const  vector<map<uint64_t,int>> &getTreeCounts() const {
         return tree_counts;
+    }
+
+    char*** getChunkZlibCompressions() const {
+        return chunks_zlib;
+    }
+
+    size_t** getCompressedSizes() const {
+        return compressed_sizes;
     }
 
     bool storageType() const {
@@ -374,23 +383,47 @@ int CountMin::pointQuery(uint64_t i) const {
     return -1;
 }
 
-int CountMin::innerProductQuery(const CountMin &other) const { // sparse unimplemented
-    const int* otherCounts = other.getCounts();
+int CountMin::innerProductQuery(const CountMin &other) const {
     int res = -1;
-    if (type != Uncompressed) {
-        fprintf(stderr, "NOT IMPLEMENTED\n");
-        exit(0);
-    }
-    for (size_t j = 0; j < d; j++) {
-        int current_res = 0;
-        for (size_t i = 0; i < w; i++) {
-            current_res += flatcounts[j*w + i] * otherCounts[j*w + i];
+    if (type == Uncompressed) {
+        if (other.type == Uncompressed) {
+            const int* otherCounts = other.getCounts();
+            if (type != Uncompressed) {
+                fprintf(stderr, "NOT IMPLEMENTED\n");
+                exit(0);
+            }
+            for (size_t j = 0; j < d; j++) {
+                int current_res = 0;
+                for (size_t i = 0; i < w; i++) {
+                    current_res += flatcounts[j*w + i] * otherCounts[j*w + i];
+                }
+                if (res == -1 || res > current_res) {
+                    res = current_res;
+                }
+            }
+            return res;
         }
-        if (res == -1 || res > current_res) {
-            res = current_res;
+        if (other.type == HashTable) {
+
+        }
+        if (other.type == Tree) {
+
+        }
+        if (other.type == ChunksZlib) {
+            
         }
     }
-    return res;
+    if (type == HashTable && other.type == HashTable) {
+
+    }
+    if (type == Tree && other.type == Tree) {
+        
+    }
+    if (type == ChunksZlib && other.type == ChunksZlib) {
+        
+    }
+    fprintf(stderr, "NOT IMPLEMENTED\n");
+    exit(0);
 }
 
 void CountMin::mergeCMs(const CountMin& other) {
@@ -428,6 +461,27 @@ void CountMin::mergeCMs(const CountMin& other) {
         }
         return;
     }
+    if (other.type == ChunksZlib) {
+        char*** chunks = other.getChunkZlibCompressions();
+        size_t** sizes = other.getCompressedSizes();
+        size_t chunk_size = CHUNKSIZE;
+        for (size_t i = 0; i < d; i++) {
+            for (size_t j = 0; j < num_chunks; j++) {
+                chunk_size = CHUNKSIZE;
+                if (chunks_zlib[i][j]) {
+                    if (j == num_chunks - 1) {
+                        chunk_size = w % CHUNKSIZE;
+                    }
+                    int* inflated; 
+                    inflated = zlib_decompress(chunks[i][j], sizes[i][j], chunk_size * sizeof(int));
+                    for (size_t k = 0; k < chunk_size; k++) {
+                        flatcounts[i * w + CHUNKSIZE * j + k] += inflated[k];
+                    }
+                    delete[] inflated;
+                }
+            }
+        }
+    }
 
     fprintf(stderr, "NOT IMPLEMENTED\n");
     exit(0);
@@ -445,8 +499,69 @@ void CountMin::mergeRawLog(const vector<pair<uint64_t, uint64_t>>& other, size_t
     }
 }
 
+// merge the raw log into the count-min directly with a for loop
+int CountMin::innerProductQueryRawLog(const vector<pair<uint64_t, uint64_t>>& arr, size_t u) {
+    int* totals = new int[4]();
+    if (type == Uncompressed) {
+        for(size_t i=0; i<u; ++i) {
+            for (size_t j = 0; j < d; j++) {
+                size_t index = hash(arr[i].first, hash_seed[j]) % w;
+                totals[j] += flatcounts[j * w + index] * arr[i].second;
+            }
+        }
+    }
+    else if (type == HashTable) {
+        for(size_t i=0; i<u; ++i) {
+            for (size_t j = 0; j < d; j++) {
+                size_t index = hash(arr[i].first, hash_seed[j]) % w;
+                auto it = hash_table_counts[j].find(index);
+                totals[j] += max(0, it) * arr[i].second;
+            }
+        }
+    }
+    else if (type == Tree) {
+        for(size_t i=0; i<u; ++i) {
+            for (size_t j = 0; j < d; j++) {
+                size_t index = hash(arr[i].first, hash_seed[j]) % w;
+                auto it = tree_counts[j].find(index);
+                if (it != tree_counts[j].end()) {
+                    totals[j] += it->second * arr[i].second;
+                }
+            }
+        }
+    }
+    else if (type == ChunksZlib) {
+        for(size_t i=0; i<u; ++i) {
+            for (size_t j = 0; j < d; j++) {
+                size_t index = hash(arr[i].first, hash_seed[j]) % w;
+                size_t chunk_block = (index / CHUNKSIZE); // find out which chunk block it is in
+                size_t chunk_index = index % CHUNKSIZE; // find out which chunk index it is in the block
+                size_t chunk_size = CHUNKSIZE; // size of uncompressed block
+                if (chunks_zlib[j][chunk_block]) {
+                    if (chunk_block == num_chunks - 1) {
+                        chunk_size = w % CHUNKSIZE;
+                    }
+                    int* inflated; 
+                    inflated = zlib_decompress(chunks_zlib[j][chunk_block], compressed_sizes[j][chunk_block], chunk_size * sizeof(int));
+                    totals += inflated[chunk_index] * arr[i].second;
+                    delete[] inflated;
+                }
+            }
+        }
+    }
+    else { 
+        fprintf(stderr, "NOT IMPLEMENTED\n");
+        exit(0); 
+    }
+    int res = totals[0];
+    for (size_t j=0; j<d; j++) {
+        res = min(res, totals[j]);
+    }
+    return res;
+}
+
 // function for querying the raw log
-uint64_t queryRawLog(const vector<pair<uint64_t, uint64_t>> arr, uint64_t key, size_t u) {
+uint64_t queryRawLog(const vector<pair<uint64_t, uint64_t>>& arr, uint64_t key, size_t u) {
     for(size_t j=0; j<u; ++j) {
         if(key==arr[j].first) {
             return arr[j].second;
@@ -454,4 +569,5 @@ uint64_t queryRawLog(const vector<pair<uint64_t, uint64_t>> arr, uint64_t key, s
     }
     return 0;
 }
+
 #endif
