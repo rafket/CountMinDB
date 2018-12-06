@@ -384,46 +384,113 @@ int CountMin::pointQuery(uint64_t i) const {
 }
 
 int CountMin::innerProductQuery(const CountMin &other) const {
-    int res = -1;
+    int* totals = new int[d]();
     if (type == Uncompressed) {
         if (other.type == Uncompressed) {
             const int* otherCounts = other.getCounts();
-            if (type != Uncompressed) {
-                fprintf(stderr, "NOT IMPLEMENTED\n");
-                exit(0);
-            }
-            for (size_t j = 0; j < d; j++) {
-                int current_res = 0;
-                for (size_t i = 0; i < w; i++) {
-                    current_res += flatcounts[j*w + i] * otherCounts[j*w + i];
-                }
-                if (res == -1 || res > current_res) {
-                    res = current_res;
+            for (size_t i = 0; i < w; i++) {
+                for (size_t j = 0; j < d; j++) {
+                    totals[j] += flatcounts[j*w + i] * otherCounts[j*w + i];
                 }
             }
-            return res;
         }
         if (other.type == HashTable) {
-
+            const auto &otherSparseCounts = other.getHashTableCounts();
+            for (size_t j = 0; j < d; j++) {
+                for (const auto &it: otherSparseCounts[j].arr) {
+                    if (it.first == (uint64_t)-1) {
+                        continue;
+                    }
+                    totals[j] += flatcounts[j*w + it.first] * it.second;
+                }
+            }
         }
         if (other.type == Tree) {
-
+            const auto &otherSparseCounts = other.getTreeCounts();
+            for (size_t j = 0; j < d; j++) {
+                for (const auto &it: otherSparseCounts[j]) {
+                    totals[j] += flatcounts[j*w + it.first] * it.second;  
+                }
+            }
         }
         if (other.type == ChunksZlib) {
-            
+            char*** chunks = other.getChunkZlibCompressions();
+            size_t** sizes = other.getCompressedSizes();
+            size_t chunk_size = CHUNKSIZE;
+            for (size_t j = 0; j < num_chunks; j++) {
+                for (size_t i = 0; i < d; i++) {
+                    chunk_size = CHUNKSIZE;
+                    if (chunks[i][j]) {
+                        if (j == num_chunks - 1) {
+                            chunk_size = w % CHUNKSIZE;
+                        }
+                        int* inflated; 
+                        inflated = zlib_decompress(chunks[i][j], sizes[i][j], chunk_size * sizeof(int));
+                        for (size_t k = 0; k < chunk_size; k++) {
+                            totals[j] += flatcounts[i * w + CHUNKSIZE * j + k] * inflated[k];
+                        }
+                        delete[] inflated;
+                    }
+                }
+            }
         }
     }
-    if (type == HashTable && other.type == HashTable) {
-
+    else if (type == HashTable && other.type == HashTable) {
+        const auto &otherSparseCounts = other.getTreeCounts();
+        for (size_t j = 0; j < d; j++) {
+            for (const auto &it: otherSparseCounts[j]) {
+                size_t index = hash(it.first, hash_seed[j]) % w;
+                auto val = hash_table_counts[j].find(index);
+                totals[j] += max(0, val) * it.second;
+            }
+        }
     }
-    if (type == Tree && other.type == Tree) {
-        
+    else if (type == Tree && other.type == Tree) {
+        const auto &otherSparseCounts = other.getTreeCounts();
+            for (size_t j = 0; j < d; j++) {
+                for (const auto &it: otherSparseCounts[j]) {
+                    size_t index = hash(it.first, hash_seed[j]) % w;
+                    auto val = tree_counts[j].find(index);
+                    if (val != tree_counts[j].end()) {
+                        totals[j] += val->second * it.second;
+                    }
+                }
+            }
     }
-    if (type == ChunksZlib && other.type == ChunksZlib) {
-        
+    else if (type == ChunksZlib && other.type == ChunksZlib) {
+        char*** chunks = other.getChunkZlibCompressions();
+        size_t** sizes = other.getCompressedSizes();
+        size_t chunk_size = CHUNKSIZE;
+        for (size_t j = 0; j < num_chunks; j++) {
+            for (size_t i = 0; i < d; i++) {
+                chunk_size = CHUNKSIZE;
+                if (chunks_zlib[i][j] && chunks[i][j]) {
+                    if (j == num_chunks - 1) {
+                        chunk_size = w % CHUNKSIZE;
+                    }
+                    int* inflated1; 
+                    int* inflated2;
+                    inflated1 = zlib_decompress(chunks[i][j], sizes[i][j], chunk_size * sizeof(int));
+                    inflated2 = zlib_decompress(chunks_zlib[i][j], compressed_sizes[i][j], chunk_size * sizeof(int));
+                    for (size_t k = 0; k < chunk_size; k++) {
+                        totals[j] += inflated1[k] * inflated2[k];
+                    }
+                    delete[] inflated1;
+                    delete[] inflated2;
+                }
+            }
+        }
     }
-    fprintf(stderr, "NOT IMPLEMENTED\n");
-    exit(0);
+    else {
+        fprintf(stderr, "NOT IMPLEMENTED\n");
+        exit(0);
+    }
+    int res = totals[0];
+    for (size_t j=0; j<d; j++) {
+        res = min(res, totals[j]);
+    }
+    delete[] totals;
+    return res;
 }
 
 void CountMin::mergeCMs(const CountMin& other) {
@@ -468,7 +535,7 @@ void CountMin::mergeCMs(const CountMin& other) {
         for (size_t i = 0; i < d; i++) {
             for (size_t j = 0; j < num_chunks; j++) {
                 chunk_size = CHUNKSIZE;
-                if (chunks_zlib[i][j]) {
+                if (chunks[i][j]) {
                     if (j == num_chunks - 1) {
                         chunk_size = w % CHUNKSIZE;
                     }
@@ -501,7 +568,7 @@ void CountMin::mergeRawLog(const vector<pair<uint64_t, uint64_t>>& other, size_t
 
 // merge the raw log into the count-min directly with a for loop
 int CountMin::innerProductQueryRawLog(const vector<pair<uint64_t, uint64_t>>& arr, size_t u) {
-    int* totals = new int[4]();
+    int* totals = new int[d]();
     if (type == Uncompressed) {
         for(size_t i=0; i<u; ++i) {
             for (size_t j = 0; j < d; j++) {
@@ -557,6 +624,7 @@ int CountMin::innerProductQueryRawLog(const vector<pair<uint64_t, uint64_t>>& ar
     for (size_t j=0; j<d; j++) {
         res = min(res, totals[j]);
     }
+    delete[] totals;
     return res;
 }
 
