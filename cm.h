@@ -149,6 +149,10 @@ struct Hashtable {
         arr.resize(n, make_pair((uint64_t)-1, 0));
     }
 
+    size_t size() const {
+        return arr.size();
+    }
+
     uint32_t findIndex(uint64_t key) const {
         uint32_t n = arr.size(), idx = hash(key) % n, cnt = 0;
         while (arr[idx].first != (uint64_t)-1 && arr[idx].first != key && cnt < n) {
@@ -385,7 +389,8 @@ void CountMin::update(uint64_t i, int c) {
     }
     else if (type == HashTable) {
         for (size_t j = 0; j < d; ++j) {
-            hash_table_counts[j][hash(i, hash_seed[j]) % w] += c;
+            size_t sz = hash_table_counts[j].size();
+            hash_table_counts[j][hash(i, hash_seed[j]) % sz] += c;
         }
     }
     else if (type == Tree) {

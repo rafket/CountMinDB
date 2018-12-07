@@ -16,8 +16,9 @@ int main(int argc, char** argv) {
     CountMin cm_ssd(epsilon, delta, 1337, Uncompressed, u, "file.cm", "count-min on SSD");
     CountMin cm_optimized(epsilon_u, delta, 1337, Uncompressed, u, nullptr, "optimized count-min in RAM");
     CountMin cm_sparse(epsilon, delta, 1337, HashTable, u, nullptr, "sparse count-min in RAM");
+    printf("\n");
 
-        vector<pair<uint64_t, uint64_t> > arr(u);
+    vector<pair<uint64_t, uint64_t>> arr(u);
     clock_t start, finish;
 
     start=clock();
@@ -29,6 +30,7 @@ int main(int argc, char** argv) {
     finish=clock();
     printf("building countMin in SSD took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
     printf("SSD countMin takes up %lfMB\n", (double)cm_ssd.getMem()/1024/1024);
+    printf("\n");
 
     start=clock();
     for(int i=0; i<u; ++i) {
@@ -39,6 +41,7 @@ int main(int argc, char** argv) {
     finish=clock();
     printf("building optimized countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
     printf("optimized countMin takes up %lfMB\n", (double)cm_optimized.getMem()/1024/1024);
+    printf("\n");
 
     start=clock();
     for(int i=0; i<u; ++i) {
@@ -49,6 +52,7 @@ int main(int argc, char** argv) {
     finish=clock();
     printf("building sparse countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
     printf("sparse countMin takes up %lfMB\n", (double)cm_sparse.getMem()/1024/1024);
+    printf("\n");
 
     start=clock();
     for(int i=0; i<u; ++i) {
@@ -59,6 +63,7 @@ int main(int argc, char** argv) {
     finish=clock();
     printf("building buffer took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
     printf("buffer takes up %lfMB\n", (double)arr.size()*(sizeof(uint64_t)+sizeof(uint64_t))/1024/1024);
+    printf("\n");
 
     uint64_t sum1=0, sum2=0, sum3=0, sum4=0;
 
@@ -96,6 +101,7 @@ int main(int argc, char** argv) {
     start=clock();
     cm_ssd.mergeCMs(cm_sparse);
     finish=clock();
+    printf("\n");
 
     printf("Merging sparse countmin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
 
