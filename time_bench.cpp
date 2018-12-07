@@ -9,10 +9,11 @@ int main(int argc, char** argv) {
         exit(0);
     }
     mt19937_64 mt(1337);
-    uniform_int_distribution<uint32_t> dist(0, (uint32_t)-1);
+    uniform_int_distribution<uint32_t> key_dist(0, (uint32_t)-1);
+    uniform_int_distribution<uint32_t> value_dist(-1000000, 1000000);
     int n=atoi(argv[1]), u=atoi(argv[2]), q=atoi(argv[3]);
     printf("I will have %d elements in the original data, insert %d random elements and perform %d random queries\n", n, u, q);
-    double epsilon=M_E/(1*n), delta=1/pow(M_E, 3);
+    double epsilon=M_E/(10*n), delta=1/pow(M_E, 3);
     double epsilon_u=M_E/(10*u);
     printf("epsilon: %lf, epsilon_u: %lf, delta: %lf\n", epsilon, epsilon_u, delta);
     CountMin cm_normal(epsilon, delta, 1337, Uncompressed, u, "file.cm");
@@ -25,9 +26,9 @@ int main(int argc, char** argv) {
     clock_t start, finish;
 
     start=clock();
-    for(int i=0; i<u; ++i) {
-        uint64_t key = dist(mt);
-        uint64_t value = 10;
+    for(int i=0; i<n; ++i) {
+        uint64_t key = key_dist(mt);
+        uint64_t value = value_dist(mt);
         cm_normal.update(key, value);
     }
     finish=clock();
@@ -36,8 +37,8 @@ int main(int argc, char** argv) {
 
     start=clock();
     for(int i=0; i<u; ++i) {
-        uint64_t key = dist(mt);
-        uint64_t value = 10;
+        uint64_t key = key_dist(mt);
+        uint64_t value = value_dist(mt);
         cm_optimized.update(key, value);
     }
     finish=clock();
@@ -46,8 +47,8 @@ int main(int argc, char** argv) {
 
     start=clock();
     for(int i=0; i<u; ++i) {
-        uint64_t key = dist(mt);
-        uint64_t value = 10;
+        uint64_t key = key_dist(mt);
+        uint64_t value = value_dist(mt);
         cm_hashtable.update(key, value);
     }
     finish=clock();
@@ -56,8 +57,8 @@ int main(int argc, char** argv) {
 
     start=clock();
     for(int i=0; i<u; ++i) {
-        uint64_t key = dist(mt);
-        uint64_t value = 10;
+        uint64_t key = key_dist(mt);
+        uint64_t value = value_dist(mt);
         cm_tree.update(key, value);
     }
     finish=clock();
@@ -66,8 +67,8 @@ int main(int argc, char** argv) {
 
     start=clock();
     for(int i=0; i<u; ++i) {
-        uint64_t key = dist(mt);
-        uint64_t value = 10;
+        uint64_t key = key_dist(mt);
+        uint64_t value = value_dist(mt);
         cm_zlib.update(key, value);
     }
     finish=clock();
@@ -76,8 +77,8 @@ int main(int argc, char** argv) {
 
     start=clock();
     for(int i=0; i<u; ++i) {
-        uint64_t key = dist(mt);
-        uint64_t value = 10;
+        uint64_t key = key_dist(mt);
+        uint64_t value = value_dist(mt);
         arr[i] = {key, value};
     }
     finish=clock();
@@ -88,21 +89,21 @@ int main(int argc, char** argv) {
 
     start=clock();
     for(int i=0; i<q; ++i) {
-        sum1 += cm_optimized.pointQuery(dist(mt));
+        sum1 += cm_optimized.pointQuery(key_dist(mt));
     }
     finish=clock();
     printf("querying optimized countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
 
     start=clock();
     for(int i=0; i<q; ++i) {
-        sum2 += cm_normal.pointQuery(dist(mt));
+        sum2 += cm_normal.pointQuery(key_dist(mt));
     }
     finish=clock();
     printf("querying normal countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
 
     start=clock();
     for(int i=0; i<q; ++i) {
-        sum3 += cm_hashtable.pointQuery(dist(mt));
+        sum3 += cm_hashtable.pointQuery(key_dist(mt));
     }
     finish=clock();
     printf("querying hash table countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
@@ -110,7 +111,7 @@ int main(int argc, char** argv) {
 
     start=clock();
     for(int i=0; i<q; ++i) {
-        sum4 += cm_tree.pointQuery(dist(mt));
+        sum4 += cm_tree.pointQuery(key_dist(mt));
     }
     finish=clock();
     printf("querying tree countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
@@ -118,7 +119,7 @@ int main(int argc, char** argv) {
 
     start=clock();
     for(int i=0; i<q; ++i) {
-        sum5 += cm_zlib.pointQuery(dist(mt));
+        sum5 += cm_zlib.pointQuery(key_dist(mt));
     }
     finish=clock();
     printf("querying zlib countMin took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
@@ -126,7 +127,7 @@ int main(int argc, char** argv) {
 
     start=clock();
     for(int i=0; i<q; ++i) {
-        sum6 += queryRawLog(arr, dist(mt), u);
+        sum6 += queryRawLog(arr, key_dist(mt), u);
     }
     printf("pay no attention to these numbers: %lu %lu %lu %lu %lu %lu\n", sum1, sum2, sum3, sum4, sum5, sum6);
     finish=clock();
