@@ -2,6 +2,8 @@
 #define CM_H
 #define CHUNKSIZE 4096
 #define BLOCKSIZE 268435456 // 256 KB -- One SSD block
+//#define BLOCKSIZE 10
+#define BUFFERSIZE 1024
 
 #include <bits/stdc++.h>
 #include <sys/mman.h>
@@ -65,9 +67,9 @@ size_t zlib_compress(int* count_array, size_t uncompressed_size, char** array) {
 
 struct Array {
     char* filename;
-    size_t length;
     int* data;
-    int fd;
+    size_t length;
+    short int fd;
 
     Array() {
         data = NULL;
@@ -109,7 +111,14 @@ struct Array {
         }
     }
 
+    void clear() {
+        memset(data, 0, length*sizeof(int));
+    }
+
     ~Array() {
+        if(data == NULL) {
+            return;
+        }
         if(this->filename != NULL) {
             munmap(data, length * sizeof(int));
             close(fd);
@@ -178,6 +187,10 @@ struct Hashtable {
     uint64_t getMem() const {
         return sizeof(seed) + arr.size() * sizeof(arr.front());
     }
+
+    void clear() {
+        fill(arr.begin(), arr.end(), make_pair((uint64_t)-1, 0));
+    }
 };
 
 enum storage_type {
@@ -190,7 +203,7 @@ enum storage_type {
 
 class CountMin {
 public:
-    CountMin(double eps, double delta, uint64_t seed, storage_type type, uint64_t num_updates, const char* filename, string name);
+    CountMin(double eps, double delta, uint64_t seed, storage_type type, uint64_t num_updates, const char* filename, const char* name);
     ~CountMin();
     void update(uint64_t i, int c);                         // increase a_i by c
     int pointQuery(uint64_t i) const;                       // return a_i
@@ -198,6 +211,7 @@ public:
     void mergeCMs(const CountMin &other);
     void mergeRawLog(const vector<pair<uint64_t, uint64_t>>& other, size_t u);
     int innerProductQueryRawLog(const vector<pair<uint64_t, uint64_t>>& other, size_t u);
+    void clear();
 
 
     uint64_t getWidth() const {
@@ -216,7 +230,7 @@ public:
         return hash_table_counts;
     }
 
-    const  vector<map<uint64_t,int>> &getTreeCounts() const {
+    const vector<map<uint64_t,int>> &getTreeCounts() const {
         return tree_counts;
     }
 
@@ -263,22 +277,28 @@ public:
         return -1;
     }
 
+    size_t getNumContents() const {
+        return num_contents;
+    }
+
 private:
     vector<uint32_t> hash_seed;
     uint64_t w, d;
     storage_type type;
     char* filename;
     int fd;
-    string name;
+//    string name;
+    uint32_t bchunk_hash_seed; // Buffered CountMin
+    size_t num_contents;
 
     // storage formats
     Array flatcounts; // uncompressed
     vector<Hashtable> hash_table_counts; // hash table
     vector<map<uint64_t,int>> tree_counts; // tree
+    vector<CountMin> bchunks[2]; // Buffered CountMin
     char*** chunks_zlib; // zlib chunk
     size_t num_chunks; // number of chunks in each row
     size_t** compressed_sizes; // sizes of compressed chunks
-
 
     uint64_t hash(uint64_t key, uint32_t seed) const {
         uint64_t out[2];
@@ -287,18 +307,21 @@ private:
     }
 };
 
-CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = Uncompressed, uint64_t num_updates = 0, const char* filename = NULL, string name = "noname") {
+CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = Uncompressed, uint64_t num_updates = 0, const char* filename = NULL, const char* name = "noname") {
     this->type = type;
-    this->name = name;
+//    this->name = name;
     w = ceil(M_E / eps);
     d = ceil(log(1 / delta));
-    hash_seed.resize(d);
+    num_contents = 0;
     mt19937_64 mt(seed);
     uniform_int_distribution<uint32_t> dist(0, (uint32_t)-1);
-    for (size_t i = 0; i < d; i++) {
-        hash_seed[i] = dist(mt);        // generate random seeds for hash function
+    //printf("%s-> w: %" PRIu64 ", d: %" PRIu64 "\n", name, w, d);
+    if (type != BufferedVersion) {
+        this->hash_seed.resize(d);
+        for (size_t i = 0; i < d; i++) {
+            this->hash_seed[i] = dist(mt);        // generate random seeds for hash function
+        }
     }
-    printf("%s : w: %" PRIu64 ", d: %" PRIu64 "\n", name.c_str(), w, d);
     if (type == Uncompressed) {
         flatcounts.reset(filename, d*w);
     }
@@ -324,23 +347,26 @@ CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = 
             compressed_sizes[i] = new size_t[num_chunks]();
         }
     }
-/*    else if (type == BufferedVersion) {
+    else if (type == BufferedVersion) {
         assert(filename != NULL);
         if (w*d < BLOCKSIZE) {
-            fprintf(stderr, "Filter is too small for buffered version");
+            fprintf(stderr, "Filter is too small for buffered version\n");
             exit(0);
         }
 
+        bchunk_hash_seed = dist(mt);
         num_chunks = ((w*d+BLOCKSIZE-1) / BLOCKSIZE);
-        for (int i=0; i<num_chunks; ++i) {
-            chunk[i] =
+        char tmp_filename[strlen(filename)+20];
+        bchunks[0].reserve(num_chunks);
+        for (size_t i=0; i<num_chunks; ++i) {
+            sprintf(tmp_filename, "%s%lu", filename, i);
+            uint32_t tmp_seed = dist(mt);
+            // TODO how should eps increase?
+            bchunks[0].emplace_back(eps*10, delta, tmp_seed, Uncompressed,
+                    num_updates, (const char*)tmp_filename);
+            bchunks[1].emplace_back(eps*10, delta, tmp_seed, HashTable, BUFFERSIZE);
         }
-
-        this->filename = strdup(filename);
-        fd = open(filename, O_RDWR | O_CREAT, 0666);
-        ftruncate(fd, d * w * sizeof(int));
-        flatcounts = (int*)mmap(0, d * w * sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    }*/
+    }
     else {
         fprintf(stderr, "NOT IMPLEMENTED\n");
         exit(0);
@@ -348,29 +374,26 @@ CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = 
 }
 
 CountMin::~CountMin() {
-//    delete flatcounts;
 }
 
 void CountMin::update(uint64_t i, int c) {
+    ++num_contents;
     if (type == Uncompressed) {
         for (size_t j = 0; j < d; j++) {
             flatcounts[j*w + hash(i, hash_seed[j]) % w] += c;
         }
-        return;
     }
-    if (type == HashTable) {
+    else if (type == HashTable) {
         for (size_t j = 0; j < d; ++j) {
             hash_table_counts[j][hash(i, hash_seed[j]) % w] += c;
         }
-        return;
     }
-    if (type == Tree) {
+    else if (type == Tree) {
         for (size_t j = 0; j < d; ++j) {
             tree_counts[j][hash(i, hash_seed[j]) % w] += c;
         }
-        return;
     }
-    if (type == ChunksZlib) {
+    else if (type == ChunksZlib) {
         for (size_t j = 0; j < d; j++) {
             size_t index =  hash(i, hash_seed[j]) % w; // find out where the hash lives
             size_t chunk_block = (index / CHUNKSIZE); // find out which chunk block it is in
@@ -392,10 +415,19 @@ void CountMin::update(uint64_t i, int c) {
             compressed_sizes[j][chunk_block] = zlib_compress(inflated, chunk_size * sizeof(int), &chunks_zlib[j][chunk_block]);
             delete[] inflated;
         }
-        return;
     }
-    fprintf(stderr, "NOT IMPLEMENTED\n");
-    exit(0);
+    else if (type == BufferedVersion) {
+        size_t chunk = hash(i, bchunk_hash_seed)%num_chunks;
+        if(bchunks[1][chunk].getNumContents() > BUFFERSIZE) {
+            bchunks[0][chunk].mergeCMs(bchunks[1][chunk]);
+            bchunks[1][chunk].clear();
+        }
+        bchunks[1][chunk].update(i, c);
+    }
+    else {
+        fprintf(stderr, "NOT IMPLEMENTED\n");
+        exit(0);
+    }
 }
 
 int CountMin::pointQuery(uint64_t i) const {
@@ -453,6 +485,10 @@ int CountMin::pointQuery(uint64_t i) const {
             delete[] inflated;
         }
         return res;
+    }
+    if (type == BufferedVersion) {
+        size_t chunk = hash(i, bchunk_hash_seed)%num_chunks;
+        return bchunks[0][chunk].pointQuery(i) + bchunks[1][chunk].pointQuery(i);
     }
     fprintf(stderr, "NOT IMPLEMENTED\n");
     return -1;
@@ -568,6 +604,26 @@ int CountMin::innerProductQuery(const CountMin &other) const {
     }
     delete[] totals;
     return res;
+}
+
+void CountMin::clear() {
+    if (type == Uncompressed) {
+        flatcounts.clear();
+    }
+    else if (type == HashTable) {
+        for (auto &i: hash_table_counts) {
+            i.clear();
+        }
+    }
+    else if (type == Tree) {
+        for (auto &i: tree_counts) {
+            i.clear();
+        }
+    }
+    else {
+        fprintf(stderr, "NOT IMPLEMENTED\n");
+        exit(0);
+    }
 }
 
 void CountMin::mergeCMs(const CountMin& other) {
