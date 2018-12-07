@@ -18,7 +18,7 @@ time_btw_ip_bench: MurmurHash3.h MurmurHash3.cpp cm.h time_btw_ip_bench.cpp
 experiments: time_bench error_bench ssd_bench
 
 clean:
-	rm time_bench error_bench ssd_bench time_ip_bench time_btw_ip_bench
+	rm time_bench error_bench ssd_bench time_ip_bench time_btw_ip_bench pq_test
 
 run_time_bench: time_bench
 	./time_bench 200000 200000 10000 && ./time_bench 400000 400000 10000 && ./time_bench 600000 600000 10000 && ./time_bench 800000 800000 10000 && ./time_bench 1000000 100000 10000
@@ -30,3 +30,9 @@ run_ssd_bench: ssd_bench
 	./ssd_bench 100000 10000 100000
 	
 run_experiments: run_time_bench run_error_bench run_ssd_bench
+
+pq_test: MurmurHash3.h MurmurHash3.cpp cm.h pq_test.cpp
+	$(CXX) -O3 MurmurHash3.cpp pq_test.cpp -lz -o pq_test -Wall
+
+run_pq_test: pq_test
+	./pq_test 100000 10000 100000
