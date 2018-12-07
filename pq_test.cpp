@@ -72,20 +72,20 @@ void TimeCM::update(uint64_t i, int c) {
         updateCM(i, c);
     }
     if (record_full) {
-        td.cnt_upd_full++;
         td.t_upd_full += clock() - start;
+        td.cnt_upd_full++;
     }
 }
 
 void TimeCM::updateBuffer(uint64_t i, int c) {
     clock_t start = 0;
     if (buffer) {
-        // if (!record_full) start = clock();
+        if (!record_full) start = clock();
         buffer->update(i, c);
-        // if (!record_full) {
-        //     td.cnt_upd_buf++;
-        //     td.t_upd_buf += clock() - start;
-        // }
+        if (!record_full) {
+            td.t_upd_buf += clock() - start;
+            td.cnt_upd_buf++;
+        }
     }
 }
 
@@ -96,8 +96,8 @@ void TimeCM::updateCM(uint64_t i, int c) {
         cm->update(i, c);
         auto finish = clock();
         if (!record_full) {
-            td.cnt_upd_cm++;
             td.t_upd_cm += clock() - start;
+            td.cnt_upd_cm++;
         }
     }
 }
@@ -107,8 +107,8 @@ int TimeCM::pointQuery(uint64_t i) {
     if (record_full) start = clock();
     int res = pointQueryCM(i) + pointQueryBuffer(i);
     if (record_full) {
-        td.cnt_pq_full++;
         td.t_pq_full += clock() - start;
+        td.cnt_pq_full++;
     }
     return res;
 }
@@ -116,12 +116,12 @@ int TimeCM::pointQuery(uint64_t i) {
 int TimeCM::pointQueryBuffer(uint64_t i) {
     clock_t start = 0;
     if (buffer) {
-        // if (!record_full) start = clock();
+        if (!record_full) start = clock();
         int res = buffer->pointQuery(i);
-        // if (!record_full) {
-        //     td.cnt_pq_buf++;
-        //     td.t_pq_buf += clock() - start;
-        // }
+        if (!record_full) {
+            td.t_pq_buf += clock() - start;
+            td.cnt_pq_buf++;
+        }
         return res;
     }
     return 0;
@@ -130,12 +130,12 @@ int TimeCM::pointQueryBuffer(uint64_t i) {
 int TimeCM::pointQueryCM(uint64_t i) {
     clock_t start = 0;
     if (cm) {
-        // if (!record_full) start = clock();
+        if (!record_full) start = clock();
         int res = cm->pointQuery(i);
-        // if (!record_full) {
-        //     td.cnt_pq_cm++;
-        //     td.t_pq_cm += clock() - start;
-        // }
+        if (!record_full) {
+            td.t_pq_cm += clock() - start;
+            td.cnt_pq_cm++;
+        }
         return res;
     }
     return 0;
@@ -260,7 +260,7 @@ int main(int argc, char **argv) {
     }
     printf("querying sparse countMin took %lfms\n",
            (double)tcm_hashtable.td.t_pq_full * 1000 / CLOCKS_PER_SEC);
-    
+
     start=clock();
     for(int i=0; i<q; ++i) {
         sum3 += queryRawLog(arr, dist(mt), u);
