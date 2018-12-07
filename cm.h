@@ -1,6 +1,7 @@
 #ifndef CM_H
 #define CM_H
-#define CHUNKSIZE 1024
+#define CHUNKSIZE 4096
+#define BLOCKSIZE 268435456 // 256 KB -- One SSD block
 
 #include <bits/stdc++.h>
 #include <sys/mman.h>
@@ -25,7 +26,7 @@ int* zlib_decompress(char* chunk, size_t compressed_size, size_t uncompressed_si
     infstream.next_out = (Bytef*) output;
     inflateInit(&infstream);
     inflate(&infstream, Z_NO_FLUSH);
-    inflateEnd(&infstream); 
+    inflateEnd(&infstream);
 
     return output;
 }
@@ -62,6 +63,74 @@ size_t zlib_compress(int* count_array, size_t uncompressed_size, char** array) {
     return compressed_size;
 }
 
+struct Array {
+    char* filename;
+    size_t length;
+    int* data;
+    int fd;
+
+    Array() {
+        data = NULL;
+        filename = NULL;
+        length = 0;
+    }
+
+    Array(size_t length) {
+        this->length = length;
+        filename = NULL;
+        data = new int[length]();
+    }
+
+    Array(const char* filename, size_t length) {
+        this->filename = strdup(filename);
+        this->length = length;
+        fd = open(this->filename, O_RDWR | O_CREAT, 0666);
+        ftruncate(fd, length * sizeof(int));
+        data = (int*)mmap(0, length * sizeof(int), PROT_READ | PROT_WRITE,
+                MAP_SHARED, fd, 0);
+    }
+
+    /* This is so that flatcounts is not a pointer, because it can't be
+     * initialized in the initializer list. It doesn't free existing data.
+     */
+    void reset(const char* filename, size_t length) {
+        if(filename == NULL) {
+            this->length = length;
+            this->filename = NULL;
+            data = new int[length]();
+        }
+        else {
+            this->filename = strdup(filename);
+            this->length = length;
+            fd = open(this->filename, O_RDWR | O_CREAT, 0666);
+            ftruncate(fd, length * sizeof(int));
+            data = (int*)mmap(0, length * sizeof(int), PROT_READ | PROT_WRITE,
+                    MAP_SHARED, fd, 0);
+        }
+    }
+
+    ~Array() {
+        if(this->filename != NULL) {
+            munmap(data, length * sizeof(int));
+            close(fd);
+            unlink(filename);
+            free(filename);
+        }
+        else {
+            delete[] data;
+        }
+    }
+
+    int operator[](size_t idx) const {
+        assert(idx<length);
+        return data[idx];
+    }
+
+    int& operator[](size_t idx) {
+        assert(idx<length);
+        return data[idx];
+    }
+};
 
 struct Hashtable {
     uint32_t seed;
@@ -139,8 +208,8 @@ public:
         return d;
     }
 
-    const int* getCounts() const {
-        return (const int*)flatcounts;
+    const Array& getCounts() const {
+        return (const Array&)flatcounts;
     }
 
     const vector<Hashtable> &getHashTableCounts() const {
@@ -191,7 +260,7 @@ public:
             return out;
         }
         fprintf(stderr, "NOT IMPLEMENTED\n");
-        return -1;   
+        return -1;
     }
 
 private:
@@ -203,8 +272,8 @@ private:
     string name;
 
     // storage formats
-    int* flatcounts; // uncompressed
-    vector<Hashtable> hash_table_counts; //hash table
+    Array flatcounts; // uncompressed
+    vector<Hashtable> hash_table_counts; // hash table
     vector<map<uint64_t,int>> tree_counts; // tree
     char*** chunks_zlib; // zlib chunk
     size_t num_chunks; // number of chunks in each row
@@ -223,18 +292,15 @@ CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = 
     this->name = name;
     w = ceil(M_E / eps);
     d = ceil(log(1 / delta));
+    hash_seed.resize(d);
+    mt19937_64 mt(seed);
+    uniform_int_distribution<uint32_t> dist(0, (uint32_t)-1);
+    for (size_t i = 0; i < d; i++) {
+        hash_seed[i] = dist(mt);        // generate random seeds for hash function
+    }
     printf("%s : w: %" PRIu64 ", d: %" PRIu64 "\n", name.c_str(), w, d);
     if (type == Uncompressed) {
-        if (filename == NULL) {
-                this->filename = NULL;
-                flatcounts = new int[d*w]();
-        } else {
-            // TODO: implement this
-            this->filename = strdup(filename);
-            fd = open(filename, O_RDWR | O_CREAT, 0666);
-            ftruncate(fd, d * w * sizeof(int));
-            flatcounts = (int*)mmap(0, d * w * sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-        }
+        flatcounts.reset(filename, d*w);
     }
     else if (type == HashTable) {
         assert(filename == NULL);
@@ -255,29 +321,34 @@ CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = 
         compressed_sizes = new size_t*[d]();
         for (size_t i = 0; i < d; i++) {
             chunks_zlib[i] = new char*[num_chunks]();
-            compressed_sizes[i] = new size_t[num_chunks](); 
+            compressed_sizes[i] = new size_t[num_chunks]();
         }
     }
+/*    else if (type == BufferedVersion) {
+        assert(filename != NULL);
+        if (w*d < BLOCKSIZE) {
+            fprintf(stderr, "Filter is too small for buffered version");
+            exit(0);
+        }
+
+        num_chunks = ((w*d+BLOCKSIZE-1) / BLOCKSIZE);
+        for (int i=0; i<num_chunks; ++i) {
+            chunk[i] =
+        }
+
+        this->filename = strdup(filename);
+        fd = open(filename, O_RDWR | O_CREAT, 0666);
+        ftruncate(fd, d * w * sizeof(int));
+        flatcounts = (int*)mmap(0, d * w * sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    }*/
     else {
         fprintf(stderr, "NOT IMPLEMENTED\n");
         exit(0);
     }
-    hash_seed.resize(d);
-    mt19937_64 mt(seed);
-    uniform_int_distribution<uint32_t> dist(0, (uint32_t)-1);
-    for (size_t i = 0; i < d; i++) {
-        hash_seed[i] = dist(mt);        // generate random seeds for hash function
-    }
 }
 
 CountMin::~CountMin() {
-    if (filename != NULL) {
-        munmap(flatcounts, w*d*sizeof(int));
-        close(fd);
-        unlink(filename); // Files should not be persistent in experiments
-    } else if (type == Uncompressed) {
-        delete[] flatcounts;
-    }
+//    delete flatcounts;
 }
 
 void CountMin::update(uint64_t i, int c) {
@@ -309,7 +380,7 @@ void CountMin::update(uint64_t i, int c) {
             if (chunk_block == num_chunks - 1) {
                 chunk_size = w % CHUNKSIZE;
             }
-            int* inflated; 
+            int* inflated;
             if (chunks_zlib[j][chunk_block]) {
                 inflated = zlib_decompress(chunks_zlib[j][chunk_block], compressed_sizes[j][chunk_block], chunk_size * sizeof(int));
                 delete[] chunks_zlib[j][chunk_block];
@@ -375,7 +446,7 @@ int CountMin::pointQuery(uint64_t i) const {
             if (chunk_block == num_chunks - 1) {
                 chunk_size = w % CHUNKSIZE;
             }
-            int* inflated; 
+            int* inflated;
             inflated = zlib_decompress(chunks_zlib[j][chunk_block], compressed_sizes[j][chunk_block], chunk_size * sizeof(int));
             if (j == 0) res = inflated[chunk_index];
             res = min(res, inflated[chunk_index]);
@@ -391,7 +462,7 @@ int CountMin::innerProductQuery(const CountMin &other) const {
     int* totals = new int[d]();
     if (type == Uncompressed) {
         if (other.type == Uncompressed) {
-            const int* otherCounts = other.getCounts();
+            const Array &otherCounts = other.getCounts();
             for (size_t i = 0; i < w; i++) {
                 for (size_t j = 0; j < d; j++) {
                     totals[j] += flatcounts[j*w + i] * otherCounts[j*w + i];
@@ -413,7 +484,7 @@ int CountMin::innerProductQuery(const CountMin &other) const {
             const auto &otherSparseCounts = other.getTreeCounts();
             for (size_t j = 0; j < d; j++) {
                 for (const auto &it: otherSparseCounts[j]) {
-                    totals[j] += flatcounts[j*w + it.first] * it.second;  
+                    totals[j] += flatcounts[j*w + it.first] * it.second;
                 }
             }
         }
@@ -429,7 +500,7 @@ int CountMin::innerProductQuery(const CountMin &other) const {
                         if (j == number_chunks - 1) {
                             chunk_size = w % CHUNKSIZE;
                         }
-                        int* inflated; 
+                        int* inflated;
                         inflated = zlib_decompress(chunks[i][j], sizes[i][j], chunk_size * sizeof(int));
                         for (size_t k = 0; k < chunk_size; k++) {
                             totals[j] += flatcounts[i * w + CHUNKSIZE * j + k] * inflated[k];
@@ -474,7 +545,7 @@ int CountMin::innerProductQuery(const CountMin &other) const {
                     if (j == num_chunks - 1) {
                         chunk_size = w % CHUNKSIZE;
                     }
-                    int* inflated1; 
+                    int* inflated1;
                     int* inflated2;
                     inflated1 = zlib_decompress(chunks[i][j], sizes[i][j], chunk_size * sizeof(int));
                     inflated2 = zlib_decompress(chunks_zlib[i][j], compressed_sizes[i][j], chunk_size * sizeof(int));
@@ -505,7 +576,7 @@ void CountMin::mergeCMs(const CountMin& other) {
         exit(0);
     }
     if (other.type == Uncompressed) {
-        const int* otherCounts = other.getCounts();
+        const Array &otherCounts = other.getCounts();
         for (size_t i = 0; i < d; ++i) {
             for (size_t j = 0; j < w; ++j) {
                 flatcounts[i*w + j] += otherCounts[i*w + j];
@@ -546,7 +617,7 @@ void CountMin::mergeCMs(const CountMin& other) {
                     chunk_size = w % CHUNKSIZE;
                 }
                 if (chunks[i][j]) {
-                    int* inflated; 
+                    int* inflated;
                     inflated = zlib_decompress(chunks[i][j], sizes[i][j], chunk_size * sizeof(int));
                     for (size_t k = 0; k < chunk_size; k++) {
                         flatcounts[i * w + CHUNKSIZE * j + k] += inflated[k];
@@ -616,7 +687,7 @@ int CountMin::innerProductQueryRawLog(const vector<pair<uint64_t, uint64_t>>& ar
                     if (chunk_block == num_chunks - 1) {
                         chunk_size = w % CHUNKSIZE;
                     }
-                    int* inflated; 
+                    int* inflated;
                     inflated = zlib_decompress(chunks_zlib[j][chunk_block], compressed_sizes[j][chunk_block], chunk_size * sizeof(int));
                     totals += inflated[chunk_index] * arr[i].second;
                     delete[] inflated;
@@ -624,9 +695,9 @@ int CountMin::innerProductQueryRawLog(const vector<pair<uint64_t, uint64_t>>& ar
             }
         }
     }
-    else { 
+    else {
         fprintf(stderr, "NOT IMPLEMENTED\n");
-        exit(0); 
+        exit(0);
     }
     int res = totals[0];
     for (size_t j=0; j<d; j++) {
