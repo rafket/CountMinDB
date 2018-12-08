@@ -22,6 +22,7 @@ void print_histogram(vector<int> errors) {
 int main(int argc, char** argv) {
     // cm should be a factor of 10 smaller
     // epsilon = e/(10*n), additive error of e/10
+    assert(argc == 4);
     mt19937_64 mt(1337);
     uniform_int_distribution<uint32_t> dist(0, (uint32_t)-1);
     int n=atoi(argv[1]), u=atoi(argv[2]), q=atoi(argv[3]);
