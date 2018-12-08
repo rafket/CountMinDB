@@ -43,7 +43,7 @@ pq_test: MurmurHash3.h MurmurHash3.cpp cm.h pq_test.cpp
 run_pq_test: pq_test
 	./pq_test 100000 10000 100000
 
-totaltest: MurmurHash3.h MurmurHash3.cpp cm.h totaltest.cpp
+totaltest: MurmurHash3.h MurmurHash3.cpp cm.h zipf.h totaltest.cpp
 	$(CXX) -O3 MurmurHash3.cpp totaltest.cpp -lz -o totaltest -Wall
 
 run_totaltest: totaltest

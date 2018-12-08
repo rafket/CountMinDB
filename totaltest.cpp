@@ -11,11 +11,13 @@
 
 #include <bits/stdc++.h>
 #include "cm.h"
+#include "zipf.h"
 
 using namespace std;
 
 mt19937_64 mt(1337);
 uniform_int_distribution<uint32_t> dist(0, (uint32_t)-1);
+zipf_distribution dist_zipf((uint32_t)-1, 0.99);
 
 double clock_to_ms(clock_t t) {
     return t * 1000.0 / CLOCKS_PER_SEC;
@@ -41,8 +43,13 @@ vector<pair<uint64_t, int>> generate_uniform_kvs(int u) {
 }
 
 vector<pair<uint64_t, int>> generate_zipf_kvs(int u) {
-    // TODO
-    return {};
+    vector<pair<uint64_t, int>> res(u);
+    for (int i=0; i < u; i++) {
+        uint32_t tmp = dist_zipf(mt), out[4];
+        MurmurHash3_x64_128(&tmp, sizeof(uint32_t), 1337, out);
+        res[i] = {out[0], 10};
+    }
+    return res;
 }
 
 int pq_full_cm(CountMin &cm, const vector<uint64_t> &keys) {
