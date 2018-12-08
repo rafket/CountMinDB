@@ -389,8 +389,7 @@ void CountMin::update(uint64_t i, int c) {
     }
     else if (type == HashTable) {
         for (size_t j = 0; j < d; ++j) {
-            size_t sz = hash_table_counts[j].size();
-            hash_table_counts[j][hash(i, hash_seed[j]) % sz] += c;
+            hash_table_counts[j][hash(i, hash_seed[j]) % w] += c;
         }
     }
     else if (type == Tree) {
