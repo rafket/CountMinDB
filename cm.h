@@ -311,7 +311,7 @@ private:
     }
 };
 
-CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = Uncompressed, uint64_t num_updates = 0, const char* filename = NULL, const char* name = "noname") {
+CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = Uncompressed, uint64_t num_updates = 100, const char* filename = NULL, const char* name = "noname") {
     this->type = type;
 //    this->name = name;
     w = ceil(M_E / eps);
@@ -331,7 +331,7 @@ CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = 
     }
     else if (type == HashTable) {
         assert(filename == NULL);
-        hash_table_counts.resize(d, Hashtable(max(num_updates, (uint64_t) 100), 1337));
+        hash_table_counts.resize(d, Hashtable(num_updates, 1337));
     }
     else if (type == Tree) {
         assert(filename == NULL);
@@ -422,7 +422,7 @@ void CountMin::update(uint64_t i, int c) {
     }
     else if (type == BufferedVersion) {
         size_t chunk = hash(i, bchunk_hash_seed)%num_chunks;
-        if(bchunks[1][chunk].getNumContents() > BUFFERSIZE) {
+        if(bchunks[1][chunk].getNumContents() == BUFFERSIZE) {
             bchunks[0][chunk].mergeCMs(bchunks[1][chunk]);
             bchunks[1][chunk].clear();
         }
@@ -613,16 +613,19 @@ int CountMin::innerProductQuery(const CountMin &other) const {
 void CountMin::clear() {
     if (type == Uncompressed) {
         flatcounts.clear();
+        num_contents = 0;
     }
     else if (type == HashTable) {
         for (auto &i: hash_table_counts) {
             i.clear();
         }
+        num_contents = 0;
     }
     else if (type == Tree) {
         for (auto &i: tree_counts) {
             i.clear();
         }
+        num_contents = 0;
     }
     else {
         fprintf(stderr, "NOT IMPLEMENTED\n");
