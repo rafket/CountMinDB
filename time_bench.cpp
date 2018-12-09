@@ -21,6 +21,7 @@ int main(int argc, char** argv) {
     CountMin cm_tree(epsilon, delta, 1337, Tree, u);
     CountMin cm_zlib(epsilon, delta, 1337, ChunksZlib, u);
     CountMin cm_optimized(epsilon_u, delta, 1337, Uncompressed);
+    CountMin cm_rawlog(epsilon_u, delta, 1337, RawLog, u);
 
     vector<pair<uint64_t, uint64_t> > arr(u);
     clock_t start, finish;
@@ -28,7 +29,7 @@ int main(int argc, char** argv) {
     start=clock();
     for(int i=0; i<n; ++i) {
         uint64_t key = key_dist(mt);
-        uint64_t value = value_dist(mt);
+        uint64_t value = 1;
         cm_normal.update(key, value);
     }
     finish=clock();
@@ -38,7 +39,7 @@ int main(int argc, char** argv) {
     start=clock();
     for(int i=0; i<u; ++i) {
         uint64_t key = key_dist(mt);
-        uint64_t value = value_dist(mt);
+        uint64_t value = 1;
         cm_optimized.update(key, value);
     }
     finish=clock();
@@ -48,7 +49,7 @@ int main(int argc, char** argv) {
     start=clock();
     for(int i=0; i<u; ++i) {
         uint64_t key = key_dist(mt);
-        uint64_t value = value_dist(mt);
+        uint64_t value = 1;
         cm_hashtable.update(key, value);
     }
     finish=clock();
@@ -58,7 +59,7 @@ int main(int argc, char** argv) {
     start=clock();
     for(int i=0; i<u; ++i) {
         uint64_t key = key_dist(mt);
-        uint64_t value = value_dist(mt);
+        uint64_t value = 1;
         cm_tree.update(key, value);
     }
     finish=clock();
@@ -68,7 +69,7 @@ int main(int argc, char** argv) {
     start=clock();
     for(int i=0; i<u; ++i) {
         uint64_t key = key_dist(mt);
-        uint64_t value = value_dist(mt);
+        uint64_t value = 1;
         cm_zlib.update(key, value);
     }
     finish=clock();
@@ -78,8 +79,8 @@ int main(int argc, char** argv) {
     start=clock();
     for(int i=0; i<u; ++i) {
         uint64_t key = key_dist(mt);
-        uint64_t value = value_dist(mt);
-        arr[i] = {key, value};
+        uint64_t value = 1;
+        cm_rawlog.update(key, value);
     }
     finish=clock();
     printf("building buffer took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
@@ -127,11 +128,12 @@ int main(int argc, char** argv) {
 
     start=clock();
     for(int i=0; i<q; ++i) {
-        sum6 += queryRawLog(arr, key_dist(mt), u);
+        sum6 += cm_rawlog.pointQuery(key_dist(mt));
     }
-    printf("pay no attention to these numbers: %lu %lu %lu %lu %lu %lu\n", sum1, sum2, sum3, sum4, sum5, sum6);
     finish=clock();
     printf("querying buffer took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);
+    printf("pay no attention to these numbers: %lu %lu %lu %lu %lu %lu\n", sum1, sum2, sum3, sum4, sum5, sum6);
+
 
     // merging with the sparse count min
     start=clock();
@@ -158,7 +160,7 @@ int main(int argc, char** argv) {
 
     // merging with the raw log
     start=clock();
-    cm_normal.mergeRawLog(arr, u);
+    cm_normal.mergeCMs(cm_rawlog);
     finish=clock();
 
     printf("Merging raw log took %lfms\n", (double)(finish-start)*1000/CLOCKS_PER_SEC);

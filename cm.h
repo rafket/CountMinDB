@@ -202,7 +202,8 @@ enum storage_type {
     HashTable,
     Tree,
     BufferedVersion,
-    ChunksZlib
+    ChunksZlib,
+    RawLog
 };
 
 class CountMin {
@@ -238,6 +239,10 @@ public:
         return tree_counts;
     }
 
+    const vector<pair<uint64_t, uint64_t>> &getRawLog() const {
+        return arr;
+    }
+
     char*** getChunkZlibCompressions() const {
         return chunks_zlib;
     }
@@ -248,6 +253,10 @@ public:
 
     size_t getNumChunks() const {
         return num_chunks;
+    }
+
+    size_t getNumUpdates() const {
+        return num_updates;
     }
 
 
@@ -300,6 +309,8 @@ private:
     vector<Hashtable> hash_table_counts; // hash table
     vector<map<uint64_t,int>> tree_counts; // tree
     vector<CountMin> bchunks[2]; // Buffered CountMin
+    vector<pair<uint64_t, uint64_t>> arr; // raw log
+    size_t num_updates; 
     char*** chunks_zlib; // zlib chunk
     size_t num_chunks; // number of chunks in each row
     size_t** compressed_sizes; // sizes of compressed chunks
@@ -371,6 +382,11 @@ CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = 
             bchunks[1].emplace_back(eps*10, delta, tmp_seed, HashTable, BUFFERSIZE);
         }
     }
+    else if (type == RawLog) {
+        assert(filename == NULL);
+        arr.resize(num_updates);
+        num_updates = 0;
+    }
     else {
         fprintf(stderr, "NOT IMPLEMENTED\n");
         exit(0);
@@ -427,6 +443,10 @@ void CountMin::update(uint64_t i, int c) {
             bchunks[1][chunk].clear();
         }
         bchunks[1][chunk].update(i, c);
+    }
+    else if (type == RawLog) {
+        arr[num_updates] = {i, c};
+        num_updates++;
     }
     else {
         fprintf(stderr, "NOT IMPLEMENTED\n");
@@ -493,6 +513,14 @@ int CountMin::pointQuery(uint64_t i) const {
     if (type == BufferedVersion) {
         size_t chunk = hash(i, bchunk_hash_seed)%num_chunks;
         return bchunks[0][chunk].pointQuery(i) + bchunks[1][chunk].pointQuery(i);
+    }
+    if (type == RawLog) {
+        for(size_t j=0; j<num_updates; ++j) {
+            if(i==arr[j].first) {
+                res += arr[j].second;
+            }
+        }
+        return res;
     }
     fprintf(stderr, "NOT IMPLEMENTED\n");
     return -1;
@@ -598,6 +626,68 @@ int CountMin::innerProductQuery(const CountMin &other) const {
             }
         }
     }
+    else if (other.type == RawLog) {
+        int* totals = new int[d]();
+        const auto &rawlog = other.getRawLog(); 
+
+        if (type == Uncompressed) {
+            for(size_t i=0; i<num_updates; ++i) {
+                for (size_t j = 0; j < d; j++) {
+                    size_t index = hash(rawlog[i].first, hash_seed[j]) % w;
+                    totals[j] += flatcounts[j * w + index] * rawlog[i].second;
+                }
+            }
+        }
+        else if (type == HashTable) {
+            for(size_t i=0; i<num_updates; ++i) {
+                for (size_t j = 0; j < d; j++) {
+                    size_t index = hash(rawlog[i].first, hash_seed[j]) % w;
+                    auto it = hash_table_counts[j].find(index);
+                    totals[j] += max(0, it) * rawlog[i].second;
+                }
+            }
+        }
+        else if (type == Tree) {
+            for(size_t i=0; i<num_updates; ++i) {
+                for (size_t j = 0; j < d; j++) {
+                    size_t index = hash(rawlog[i].first, hash_seed[j]) % w;
+                    auto it = tree_counts[j].find(index);
+                    if (it != tree_counts[j].end()) {
+                        totals[j] += it->second * rawlog[i].second;
+                    }
+                }
+            }
+        }
+        else if (type == ChunksZlib) {
+            for(size_t i=0; i<num_updates; ++i) {
+                for (size_t j = 0; j < d; j++) {
+                    size_t index = hash(rawlog[i].first, hash_seed[j]) % w;
+                    size_t chunk_block = (index / CHUNKSIZE); // find out which chunk block it is in
+                    size_t chunk_index = index % CHUNKSIZE; // find out which chunk index it is in the block
+                    size_t chunk_size = CHUNKSIZE; // size of uncompressed block
+                    if (chunks_zlib[j][chunk_block]) {
+                        if (chunk_block == num_chunks - 1) {
+                            chunk_size = w % CHUNKSIZE;
+                        }
+                        int* inflated;
+                        inflated = zlib_decompress(chunks_zlib[j][chunk_block], compressed_sizes[j][chunk_block], chunk_size * sizeof(int));
+                        totals += inflated[chunk_index] * rawlog[i].second;
+                        delete[] inflated;
+                    }
+                }
+            }
+        }
+        else {
+            fprintf(stderr, "NOT IMPLEMENTED\n");
+            exit(0);
+        }
+        int res = totals[0];
+        for (size_t j=0; j<d; j++) {
+            res = min(res, totals[j]);
+        }
+        delete[] totals;
+        return res;
+    }
     else {
         fprintf(stderr, "NOT IMPLEMENTED\n");
         exit(0);
@@ -688,6 +778,13 @@ void CountMin::mergeCMs(const CountMin& other) {
                     delete[] inflated;
                 }
             }
+        }
+        return;
+    }
+    if (other.type == RawLog) {
+        const auto &rawlog = other.getRawLog(); 
+        for (size_t j = 0; j < other.getNumUpdates(); j++) {
+            update(rawlog[j].first, rawlog[j].second);
         }
         return;
     }

@@ -17,3 +17,6 @@ b) full workload time with no buffer + with buffers
 a) Hash Table-Hash Table, Tree-Tree, etc.
 b) CountMin in SSD with each type of buffer
 c) BufferedCountMin in SSD with each type of buffer
+d) TIME PERMITTING: do HashTable-RawLog, Tree-RawLog, etc. 
+
+Give advice on how often you should batch.
