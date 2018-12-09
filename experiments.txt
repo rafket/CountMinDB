@@ -1,0 +1,19 @@
+- CountMin on SSD
+- Different buffer types
+
+1) Space Graphs for Each Buffer / CountMin Type
+a) Buffered (getMem)
+b) Unbuffered (getMem)
+
+2) Update Time
+a) testing updating time of different buffer types
+b) updating directly
+
+3) Point Query
+a) compare query time of different buffers
+b) full workload time with no buffer + with buffers
+
+4) Inner Product Query
+a) Hash Table-Hash Table, Tree-Tree, etc.
+b) CountMin in SSD with each type of buffer
+c) BufferedCountMin in SSD with each type of buffer
