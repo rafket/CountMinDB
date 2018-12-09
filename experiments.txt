@@ -15,7 +15,7 @@ b) full workload time with no buffer + with buffers
 
 4) Inner Product Query
 a) Hash Table-Hash Table, Tree-Tree, etc.
-b) TIME PERMITTING: do HashTable-RawLog, Tree-RawLog to see if using raw log for one of the updates stores is better
+b) do HashTable-RawLog, Tree-RawLog to see if using raw log for one of the updates stores is better
 c) CountMin in SSD with each type of buffer
 d) BufferedCountMin in SSD with each type of buffer
 

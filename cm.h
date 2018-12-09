@@ -322,7 +322,7 @@ private:
     }
 };
 
-CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = Uncompressed, uint64_t num_updates = 100, const char* filename = NULL, const char* name = "noname") {
+CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = Uncompressed, uint64_t number_updates = 100, const char* filename = NULL, const char* name = "noname") {
     this->type = type;
 //    this->name = name;
     w = ceil(M_E / eps);
@@ -342,7 +342,7 @@ CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = 
     }
     else if (type == HashTable) {
         assert(filename == NULL);
-        hash_table_counts.resize(d, Hashtable(2*num_updates, 1337));
+        hash_table_counts.resize(d, Hashtable(2*number_updates, 1337));
     }
     else if (type == Tree) {
         assert(filename == NULL);
@@ -378,13 +378,13 @@ CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = 
             uint32_t tmp_seed = dist(mt);
             // TODO how should eps increase?
             bchunks[0].emplace_back(eps*10, delta, tmp_seed, Uncompressed,
-                    num_updates, (const char*)tmp_filename);
+                    number_updates, (const char*)tmp_filename);
             bchunks[1].emplace_back(eps*10, delta, tmp_seed, HashTable, BUFFERSIZE);
         }
     }
     else if (type == RawLog) {
         assert(filename == NULL);
-        arr.resize(num_updates);
+        arr.resize(number_updates);
         num_updates = 0;
     }
     else {
@@ -627,7 +627,6 @@ int CountMin::innerProductQuery(const CountMin &other) const {
         }
     }
     else if (other.type == RawLog) {
-        int* totals = new int[d]();
         const auto &rawlog = other.getRawLog(); 
         size_t updates = other.getNumUpdates();
         if (type == Uncompressed) {
@@ -681,12 +680,6 @@ int CountMin::innerProductQuery(const CountMin &other) const {
             fprintf(stderr, "NOT IMPLEMENTED\n");
             exit(0);
         }
-        int res = totals[0];
-        for (size_t j=0; j<d; j++) {
-            res = min(res, totals[j]);
-        }
-        delete[] totals;
-        return res;
     }
     else {
         fprintf(stderr, "NOT IMPLEMENTED\n");
