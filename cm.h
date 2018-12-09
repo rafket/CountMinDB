@@ -2,17 +2,36 @@
 #define CM_H
 #define CHUNKSIZE 4096
 #define BLOCKSIZE 268435456 // 256 KB -- One SSD block
-//#define BLOCKSIZE 10
 #define BUFFERSIZE 1024
 
 #include <bits/stdc++.h>
 #include <sys/mman.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include "lz4.h"
 #include "MurmurHash3.h"
 #include "zlib.h"
 
 using namespace std;
+
+size_t lz4_compress(char* source, char*& dest, size_t source_size) {
+    size_t dest_size = 16;
+    dest = nullptr;
+    do {
+        dest_size *= 2;
+        if(dest != nullptr) {
+            delete[] dest;
+        }
+        dest = new char[dest_size];
+    } while( !LZ4_compress_fast(source, dest, source_size, dest_size, 10) );
+    return dest_size;
+}
+
+void lz4_decompress(char* source, char*& dest, size_t source_size, size_t dest_size) {
+    dest = new char[dest_size];
+    LZ4_decompress_safe(source, dest, source_size, dest_size);
+}
+
 
 // decompress function from zlib (which uses adaptive Huffman coding apparently)
 int* zlib_decompress(char* chunk, size_t compressed_size, size_t uncompressed_size) {
@@ -201,9 +220,12 @@ enum storage_type {
     Uncompressed,
     HashTable,
     Tree,
-    BufferedVersion,
+    BufferedHash,
+    BufferedTree,
+    BufferedRaw,
     ChunksZlib,
-    RawLog
+    RawLog,
+    LZ4
 };
 
 class CountMin {
@@ -303,6 +325,7 @@ private:
 //    string name;
     uint32_t bchunk_hash_seed; // Buffered CountMin
     size_t num_contents;
+    size_t lz4_size;
 
     // storage formats
     Array flatcounts; // uncompressed
@@ -310,10 +333,11 @@ private:
     vector<map<uint64_t,int>> tree_counts; // tree
     vector<CountMin> bchunks[2]; // Buffered CountMin
     vector<pair<uint64_t, uint64_t>> arr; // raw log
-    size_t num_updates; 
+    size_t num_updates;
     char*** chunks_zlib; // zlib chunk
     size_t num_chunks; // number of chunks in each row
     size_t** compressed_sizes; // sizes of compressed chunks
+    char* lz4_flatcounts;
 
     uint64_t hash(uint64_t key, uint32_t seed) const {
         uint64_t out[2];
@@ -331,7 +355,7 @@ CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = 
     mt19937_64 mt(seed);
     uniform_int_distribution<uint32_t> dist(0, (uint32_t)-1);
     //printf("%s-> w: %" PRIu64 ", d: %" PRIu64 "\n", name, w, d);
-    if (type != BufferedVersion) {
+    if (type != BufferedHash and type != BufferedTree and type != BufferedRaw) {
         this->hash_seed.resize(d);
         for (size_t i = 0; i < d; i++) {
             this->hash_seed[i] = dist(mt);        // generate random seeds for hash function
@@ -362,7 +386,13 @@ CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = 
             compressed_sizes[i] = new size_t[num_chunks]();
         }
     }
-    else if (type == BufferedVersion) {
+    else if (type == LZ4) {
+        assert(filename == NULL);
+        char* tmp = new char[d*w*sizeof(int)]();
+        lz4_size = lz4_compress(tmp, lz4_flatcounts, d*w*sizeof(int));
+        delete[] tmp;
+    }
+    else if (type == BufferedHash || type == BufferedTree || type == BufferedRaw) {
         assert(filename != NULL);
         if (w*d < BLOCKSIZE) {
             fprintf(stderr, "Filter is too small for buffered version\n");
@@ -379,7 +409,15 @@ CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = 
             // TODO how should eps increase?
             bchunks[0].emplace_back(eps*10, delta, tmp_seed, Uncompressed,
                     number_updates, (const char*)tmp_filename);
-            bchunks[1].emplace_back(eps*10, delta, tmp_seed, HashTable, BUFFERSIZE);
+            if (type == BufferedHash) {
+                bchunks[1].emplace_back(eps*10, delta, tmp_seed, HashTable, BUFFERSIZE);
+            }
+            else if (type == BufferedTree) {
+                bchunks[1].emplace_back(eps*10, delta, tmp_seed, Tree, BUFFERSIZE);
+            }
+            else {
+                bchunks[1].emplace_back(eps*10, delta, tmp_seed, RawLog, BUFFERSIZE);
+            }
         }
     }
     else if (type == RawLog) {
@@ -436,7 +474,17 @@ void CountMin::update(uint64_t i, int c) {
             delete[] inflated;
         }
     }
-    else if (type == BufferedVersion) {
+    else if (type == LZ4) {
+        char* tmp = new char[d*w*sizeof(int)]();
+        lz4_decompress(lz4_flatcounts, tmp, lz4_size, d*w*sizeof(int));
+        delete[] lz4_flatcounts;
+        for(size_t j = 0; j < d; ++j) {
+            ((int*)tmp)[j*w + hash(i, hash_seed[j]) % w] += c;
+        }
+        lz4_compress(tmp, lz4_flatcounts, d*w);
+        delete[] tmp;
+    }
+    else if (type == BufferedHash || type == BufferedTree || type == BufferedRaw) {
         size_t chunk = hash(i, bchunk_hash_seed)%num_chunks;
         if(bchunks[1][chunk].getNumContents() == BUFFERSIZE) {
             bchunks[0][chunk].mergeCMs(bchunks[1][chunk]);
@@ -510,7 +558,17 @@ int CountMin::pointQuery(uint64_t i) const {
         }
         return res;
     }
-    if (type == BufferedVersion) {
+    if (type == LZ4) {
+        char* tmp = new char[d*w*sizeof(int)]();
+        lz4_decompress(lz4_flatcounts, tmp, lz4_size, d*w*sizeof(int));
+        res = ((int*)tmp)[hash(i, hash_seed[0]) % w];
+        for (size_t j = 1; j < d; j++) {
+            res = min(res, ((int*)tmp)[j*w + hash(i, hash_seed[j]) % w]);
+        }
+        delete[] tmp;
+        return res;
+    }
+    if (type == BufferedHash || type == BufferedTree || type == BufferedRaw) {
         size_t chunk = hash(i, bchunk_hash_seed)%num_chunks;
         return bchunks[0][chunk].pointQuery(i) + bchunks[1][chunk].pointQuery(i);
     }
@@ -627,7 +685,7 @@ int CountMin::innerProductQuery(const CountMin &other) const {
         }
     }
     else if (other.type == RawLog) {
-        const auto &rawlog = other.getRawLog(); 
+        const auto &rawlog = other.getRawLog();
         size_t updates = other.getNumUpdates();
         if (type == Uncompressed) {
             for(size_t i=0; i<updates; ++i) {
@@ -775,7 +833,7 @@ void CountMin::mergeCMs(const CountMin& other) {
         return;
     }
     if (other.type == RawLog) {
-        const auto &rawlog = other.getRawLog(); 
+        const auto &rawlog = other.getRawLog();
         for (size_t j = 0; j < other.getNumUpdates(); j++) {
             update(rawlog[j].first, rawlog[j].second);
         }

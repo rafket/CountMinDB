@@ -1,22 +1,22 @@
 CXX = g++
 
-time_bench: MurmurHash3.h MurmurHash3.cpp cm.h time_bench.cpp
-	$(CXX) -O3 MurmurHash3.cpp time_bench.cpp -lz -o time_bench -Wall
+time_bench: lz4.h lz4.c MurmurHash3.h MurmurHash3.cpp cm.h time_bench.cpp
+	$(CXX) -g lz4.c MurmurHash3.cpp time_bench.cpp -lz -o time_bench -Wall
 
-error_bench: MurmurHash3.h MurmurHash3.cpp cm.h error_bench.cpp
-	$(CXX) -O3 MurmurHash3.cpp error_bench.cpp -lz -o error_bench -Wall
+error_bench: lz4.h lz4.c MurmurHash3.h MurmurHash3.cpp cm.h error_bench.cpp
+	$(CXX) -O3 lz4.c MurmurHash3.cpp error_bench.cpp -lz -o error_bench -Wall
 
-ssd_bench: MurmurHash3.h MurmurHash3.cpp cm.h ssd_bench.cpp
-	$(CXX) -O3 MurmurHash3.cpp ssd_bench.cpp -lz -o ssd_bench -Wall
+ssd_bench: lz4.h lz4.c MurmurHash3.h MurmurHash3.cpp cm.h ssd_bench.cpp
+	$(CXX) -O3 lz4.c MurmurHash3.cpp ssd_bench.cpp -lz -o ssd_bench -Wall
 
-time_ip_bench: MurmurHash3.h MurmurHash3.cpp cm.h time_ip_bench.cpp
-	$(CXX) -O3 MurmurHash3.cpp time_ip_bench.cpp -lz -o time_ip_bench -Wall
+time_ip_bench: lz4.h lz4.c MurmurHash3.h MurmurHash3.cpp cm.h time_ip_bench.cpp
+	$(CXX) -O3 lz4.c MurmurHash3.cpp time_ip_bench.cpp -lz -o time_ip_bench -Wall
 
-time_btw_ip_bench: MurmurHash3.h MurmurHash3.cpp cm.h time_btw_ip_bench.cpp
-	$(CXX) -O3 MurmurHash3.cpp time_btw_ip_bench.cpp -lz -o time_btw_ip_bench -Wall
+time_btw_ip_bench: lz4.h lz4.c MurmurHash3.h MurmurHash3.cpp cm.h time_btw_ip_bench.cpp
+	$(CXX) -O3 lz4.c MurmurHash3.cpp time_btw_ip_bench.cpp -lz -o time_btw_ip_bench -Wall
 
-buffered_bench: MurmurHash3.h MurmurHash3.cpp cm.h buffered_bench.cpp
-	$(CXX) -O3 MurmurHash3.cpp buffered_bench.cpp -lz -o buffered_bench -Wall
+buffered_bench: lz4.h lz4.c MurmurHash3.h MurmurHash3.cpp cm.h buffered_bench.cpp
+	$(CXX) -O3 lz4.c MurmurHash3.cpp buffered_bench.cpp -lz -o buffered_bench -Wall
 
 experiments: time_bench error_bench ssd_bench
 
@@ -37,14 +37,14 @@ run_buffered_bench: buffered_bench
 
 run_experiments: run_time_bench run_error_bench run_ssd_bench
 
-pq_test: MurmurHash3.h MurmurHash3.cpp cm.h pq_test.cpp
-	$(CXX) -O3 MurmurHash3.cpp pq_test.cpp -lz -o pq_test -Wall
+pq_test: lz4.h lz4.c MurmurHash3.h MurmurHash3.cpp cm.h pq_test.cpp
+	$(CXX) -O3 lz4.c MurmurHash3.cpp pq_test.cpp -lz -o pq_test -Wall
 
 run_pq_test: pq_test
 	./pq_test 100000 10000 100000
 
-totaltest: MurmurHash3.h MurmurHash3.cpp cm.h zipf.h totaltest.cpp
-	$(CXX) -O3 MurmurHash3.cpp totaltest.cpp -lz -o totaltest -Wall
+totaltest: lz4.h lz4.c MurmurHash3.h MurmurHash3.cpp cm.h zipf.h totaltest.cpp
+	$(CXX) -O3 lz4.c MurmurHash3.cpp totaltest.cpp -lz -o totaltest -Wall
 
 run_totaltest: totaltest
 	./totaltest 100000 10000 100000

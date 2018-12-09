@@ -27,7 +27,7 @@ int main(int argc, char** argv) {
     printf("I will insert %d random elements\n", n);
     double epsilon=M_E/(10*n), delta=1/pow(M_E, 3);
     printf("epsilon: %lf, delta: %lf\n", epsilon, delta);
-    CountMin *cm_buffered = new CountMin(epsilon, delta, 1337, BufferedVersion, n, "buffered");
+    CountMin *cm_buffered = new CountMin(epsilon, delta, 1337, BufferedHash, n);
     map<uint64_t, int> arr;
 
     for(int i=0; i<n; ++i) {
