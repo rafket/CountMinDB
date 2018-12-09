@@ -101,7 +101,7 @@ int main(int argc, char** argv) {
         "count-min on disk for hashtable buffer"
     );
     CountMin cm_hashtable(
-        epsilon_u, delta, 1337, HashTable, u, nullptr,
+        epsilon, delta, 1337, HashTable, u, nullptr,
         "in memory hashtable buffer"
     );
 
@@ -111,7 +111,17 @@ int main(int argc, char** argv) {
         "count-min on disk for tree buffer"
     );
     CountMin cm_tree(
-        epsilon_u, delta, 1337, Tree, u, nullptr,
+        epsilon, delta, 1337, Tree, u, nullptr,
+        "in memory tree buffer"
+    );
+
+    // count-min on disk with a raw log buffer
+    CountMin cm_ssd_rawlog(
+        epsilon, delta, 1337, Uncompressed, u, "tree.cm",
+        "count-min on disk for tree buffer"
+    );
+    CountMin cm_rawlog(
+        0, 0, 1337, RawLog, u, nullptr,
         "in memory tree buffer"
     );
 
@@ -143,6 +153,12 @@ int main(int argc, char** argv) {
     printf("update time for in memory tree buffer:      %lfms\n",
            clock_to_ms(finish - start));
 
+    start = clock();
+    update_cm(cm_rawlog, uniform_kvs);
+    finish = clock();
+    printf("update time for raw log buffer:      %lfms\n",
+           clock_to_ms(finish - start));
+
     // point query time
     auto uniform_keys = generate_uniform_keys(q);
     int tmp;
@@ -172,6 +188,13 @@ int main(int argc, char** argv) {
     tmp = pq_full_cm(cm_tree, uniform_keys);
     finish = clock();
     printf("point query time for in memory tree buffer:      %lfms\n",
+           clock_to_ms(finish - start));
+    printf("### ignore this value: %d\n", tmp);
+
+    start = clock();
+    tmp = pq_full_cm(cm_rawlog, uniform_keys);
+    finish = clock();
+    printf("point query time for in memory raw log buffer:      %lfms\n",
            clock_to_ms(finish - start));
     printf("### ignore this value: %d\n", tmp);
 

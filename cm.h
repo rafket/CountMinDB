@@ -629,9 +629,9 @@ int CountMin::innerProductQuery(const CountMin &other) const {
     else if (other.type == RawLog) {
         int* totals = new int[d]();
         const auto &rawlog = other.getRawLog(); 
-
+        size_t updates = other.getNumUpdates();
         if (type == Uncompressed) {
-            for(size_t i=0; i<num_updates; ++i) {
+            for(size_t i=0; i<updates; ++i) {
                 for (size_t j = 0; j < d; j++) {
                     size_t index = hash(rawlog[i].first, hash_seed[j]) % w;
                     totals[j] += flatcounts[j * w + index] * rawlog[i].second;
@@ -639,7 +639,7 @@ int CountMin::innerProductQuery(const CountMin &other) const {
             }
         }
         else if (type == HashTable) {
-            for(size_t i=0; i<num_updates; ++i) {
+            for(size_t i=0; i<updates; ++i) {
                 for (size_t j = 0; j < d; j++) {
                     size_t index = hash(rawlog[i].first, hash_seed[j]) % w;
                     auto it = hash_table_counts[j].find(index);
@@ -648,7 +648,7 @@ int CountMin::innerProductQuery(const CountMin &other) const {
             }
         }
         else if (type == Tree) {
-            for(size_t i=0; i<num_updates; ++i) {
+            for(size_t i=0; i<updates; ++i) {
                 for (size_t j = 0; j < d; j++) {
                     size_t index = hash(rawlog[i].first, hash_seed[j]) % w;
                     auto it = tree_counts[j].find(index);
@@ -659,7 +659,7 @@ int CountMin::innerProductQuery(const CountMin &other) const {
             }
         }
         else if (type == ChunksZlib) {
-            for(size_t i=0; i<num_updates; ++i) {
+            for(size_t i=0; i<updates; ++i) {
                 for (size_t j = 0; j < d; j++) {
                     size_t index = hash(rawlog[i].first, hash_seed[j]) % w;
                     size_t chunk_block = (index / CHUNKSIZE); // find out which chunk block it is in
