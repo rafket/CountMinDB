@@ -331,7 +331,7 @@ CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = 
     }
     else if (type == HashTable) {
         assert(filename == NULL);
-        hash_table_counts.resize(d, Hashtable(num_updates, 1337));
+        hash_table_counts.resize(d, Hashtable(2*num_updates, 1337));
     }
     else if (type == Tree) {
         assert(filename == NULL);
