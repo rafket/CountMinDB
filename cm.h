@@ -434,16 +434,16 @@ CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = 
             sprintf(tmp_filename, "%s%lu", filename, i);
             uint32_t tmp_seed = dist(mt);
             // TODO how should eps increase?
-            bchunks[0].emplace_back(eps*10, delta, tmp_seed, Uncompressed,
+            bchunks[0].emplace_back(d*M_E/BLOCKSIZE, delta, tmp_seed, Uncompressed,
                     number_updates, (const char*)tmp_filename);
             if (type == BufferedHash) {
-                bchunks[1].emplace_back(eps*10, delta, tmp_seed, HashTable, BUFFERSIZE);
+                bchunks[1].emplace_back(d*M_E/BLOCKSIZE, delta, tmp_seed, HashTable, BUFFERSIZE);
             }
             else if (type == BufferedTree) {
-                bchunks[1].emplace_back(eps*10, delta, tmp_seed, Tree, BUFFERSIZE);
+                bchunks[1].emplace_back(d*M_E/BLOCKSIZE, delta, tmp_seed, Tree, BUFFERSIZE);
             }
             else {
-                bchunks[1].emplace_back(eps*10, delta, tmp_seed, RawLog, BUFFERSIZE);
+                bchunks[1].emplace_back(d*M_E/BLOCKSIZE, delta, tmp_seed, RawLog, BUFFERSIZE);
             }
         }
     }
