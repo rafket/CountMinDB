@@ -48,3 +48,9 @@ totaltest: lz4.h lz4.c MurmurHash3.h MurmurHash3.cpp cm.h zipf.h totaltest.cpp
 
 run_totaltest: totaltest
 	./totaltest 100000 10000 100000
+
+spacetest: lz4.h lz4.c MurmurHash3.h MurmurHash3.cpp cm.h zipf.h spacetest.cpp
+	$(CXX) -O3 lz4.c MurmurHash3.cpp spacetest.cpp -lz -o spacetest -Wall
+
+run_spacetest: spacetest
+	./spacetest 100000 10000 100000

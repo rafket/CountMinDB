@@ -328,13 +328,24 @@ public:
             out += d * sizeof(uint32_t);
             return out;
         }
-        if (type == ChunksZlib) {
+        if (type == ChunksZlib || type == LZ4) {
             uint64_t out = 0;
             for (size_t i = 0; i < d; i++) {
                 for (size_t j = 0; j < num_chunks; j++) {
                     out += compressed_sizes[i][j];
                 }
             }
+            return out;
+        }
+        if (type == Tree) {
+            uint64_t out = 0;
+            for (size_t i = 0; i < d; ++i) {
+                out += tree_counts[i].size() * (16 + sizeof(pair<uint64_t,int>));  // size of each hashtable
+            }
+            return out;
+        }
+        if (type == RawLog) {
+            uint64_t out = arr.size() * sizeof(arr[0]);
             return out;
         }
         fprintf(stderr, "NOT IMPLEMENTED\n");
