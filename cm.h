@@ -348,6 +348,13 @@ public:
             uint64_t out = arr.size() * sizeof(arr[0]);
             return out;
         }
+        if (type == BufferedHash || type == BufferedTree || type == BufferedRaw) {
+            uint64_t out = 0;
+            for(auto &i: bchunks[1]) {
+                out += i.getMem();
+            }
+            return out;
+        }
         fprintf(stderr, "NOT IMPLEMENTED\n");
         return -1;
     }
