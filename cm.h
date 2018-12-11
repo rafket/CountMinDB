@@ -290,6 +290,10 @@ public:
         return arr;
     }
 
+    const vector<CountMin>* getBchunks() const {
+        return (const vector<CountMin>*)bchunks;
+    }
+
     char*** getChunkZlibCompressions() const {
         return chunks_compression;
     }
@@ -603,8 +607,8 @@ int CountMin::innerProductQuery(const CountMin &other) const {
     if (type == Uncompressed) {
         if (other.type == Uncompressed) {
             const Array &otherCounts = other.getCounts();
-            for (size_t i = 0; i < w; i++) {
-                for (size_t j = 0; j < d; j++) {
+            for (size_t j = 0; j < d; j++) {
+                for (size_t i = 0; i < w; i++) {
                     totals[j] += flatcounts[j*w + i] * otherCounts[j*w + i];
                 }
             }
@@ -748,9 +752,19 @@ int CountMin::innerProductQuery(const CountMin &other) const {
                 }
             }
         }
-        else {
-            fprintf(stderr, "NOT IMPLEMENTED\n");
-            exit(0);
+        else if ( (type == BufferedHash || type == BufferedTree || type == BufferedRaw)
+                && (other.type == BufferedHash || other.type == BufferedTree || other.type == BufferedRaw) ) {
+            assert(num_chunks == other.getNumChunks());
+            const vector<CountMin>* otherBchunks = other.getBchunks();
+            int res = 0;
+            for(size_t k=0; k<num_chunks; ++k) {
+                res += bchunks[0][k].innerProductQuery(otherBchunks[0][k]);
+                res += bchunks[0][k].innerProductQuery(otherBchunks[1][k]);
+                res += bchunks[1][k].innerProductQuery(otherBchunks[0][k]);
+                res += bchunks[1][k].innerProductQuery(otherBchunks[1][k]);
+            }
+            delete[] totals;
+            return res;
         }
     }
     else {
