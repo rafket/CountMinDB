@@ -350,7 +350,6 @@ private:
 //    string name;
     uint32_t bchunk_hash_seed; // Buffered CountMin
     size_t num_contents;
-    size_t lz4_size;
 
     // storage formats
     Array flatcounts; // uncompressed
@@ -362,7 +361,6 @@ private:
     char*** chunks_compression; // zlib chunk
     size_t num_chunks; // number of chunks in each row
     size_t** compressed_sizes; // sizes of compressed chunks
-    char* lz4_flatcounts;
 
     uint64_t hash(uint64_t key, uint32_t seed) const {
         uint64_t out[2];
