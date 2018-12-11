@@ -14,22 +14,35 @@
 
 using namespace std;
 
-size_t lz4_compress(char* source, char*& dest, size_t source_size) {
+enum storage_type {
+    Uncompressed,
+    HashTable,
+    Tree,
+    BufferedHash,
+    BufferedTree,
+    BufferedRaw,
+    ChunksZlib,
+    RawLog,
+    LZ4
+};
+
+size_t lz4_compress(int* source, size_t source_size, char** dest) {
     size_t dest_size = 16;
-    dest = nullptr;
+    *dest = nullptr;
     do {
         dest_size *= 2;
-        if(dest != nullptr) {
-            delete[] dest;
+        if(*dest != nullptr) {
+            delete[] *dest;
         }
-        dest = new char[dest_size];
-    } while( !LZ4_compress_fast(source, dest, source_size, dest_size, 10) );
+        *dest = new char[dest_size];
+    } while( !LZ4_compress_fast((char*) source, *dest, source_size, dest_size, 10) );
     return dest_size;
 }
 
-void lz4_decompress(char* source, char*& dest, size_t source_size, size_t dest_size) {
-    dest = new char[dest_size];
-    LZ4_decompress_safe(source, dest, source_size, dest_size);
+int* lz4_decompress(char* source, size_t source_size, size_t dest_size) {
+    int* dest = new int[dest_size];
+    LZ4_decompress_safe(source, (char*) dest, source_size, dest_size);
+    return dest;
 }
 
 
@@ -83,6 +96,29 @@ size_t zlib_compress(int* count_array, size_t uncompressed_size, char** array) {
     *array = chunk;
     return compressed_size;
 }
+
+
+size_t compression(int* count_array, size_t uncompressed_size, char** array, storage_type type) {
+    if (type == ChunksZlib) {
+        return zlib_compress(count_array, uncompressed_size, array);
+    }
+    if (type == LZ4) {
+        return lz4_compress(count_array, uncompressed_size, array);
+    }
+    return 0;
+}
+
+int* decompression(char* chunk, size_t compressed_size, size_t uncompressed_size, storage_type type)  {
+    if (type == ChunksZlib) {
+        return zlib_decompress(chunk, compressed_size, uncompressed_size);
+    }
+    if (type == LZ4) {
+        return lz4_decompress(chunk, compressed_size, uncompressed_size);
+    }
+    return nullptr;
+}
+
+
 
 struct Array {
     char* filename;
@@ -216,17 +252,6 @@ struct Hashtable {
     }
 };
 
-enum storage_type {
-    Uncompressed,
-    HashTable,
-    Tree,
-    BufferedHash,
-    BufferedTree,
-    BufferedRaw,
-    ChunksZlib,
-    RawLog,
-    LZ4
-};
 
 class CountMin {
 public:
@@ -266,7 +291,7 @@ public:
     }
 
     char*** getChunkZlibCompressions() const {
-        return chunks_zlib;
+        return chunks_compression;
     }
 
     size_t** getCompressedSizes() const {
@@ -334,7 +359,7 @@ private:
     vector<CountMin> bchunks[2]; // Buffered CountMin
     vector<pair<uint64_t, uint64_t>> arr; // raw log
     size_t num_updates;
-    char*** chunks_zlib; // zlib chunk
+    char*** chunks_compression; // zlib chunk
     size_t num_chunks; // number of chunks in each row
     size_t** compressed_sizes; // sizes of compressed chunks
     char* lz4_flatcounts;
@@ -372,26 +397,26 @@ CountMin::CountMin(double eps, double delta, uint64_t seed, storage_type type = 
         assert(filename == NULL);
         tree_counts.assign(d, map<uint64_t,int>());
     }
-    else if (type == ChunksZlib) {
+    else if (type == ChunksZlib || type == LZ4) {
         assert(filename == NULL);
         num_chunks = (w / CHUNKSIZE);
         if (w % CHUNKSIZE != 0) {
             num_chunks++;
         }
         // printf("num chunks:%d\n", num_chunks);
-        chunks_zlib = new char**[d]();
+        chunks_compression = new char**[d]();
         compressed_sizes = new size_t*[d]();
         for (size_t i = 0; i < d; i++) {
-            chunks_zlib[i] = new char*[num_chunks]();
+            chunks_compression[i] = new char*[num_chunks]();
             compressed_sizes[i] = new size_t[num_chunks]();
         }
     }
-    else if (type == LZ4) {
-        assert(filename == NULL);
-        char* tmp = new char[d*w*sizeof(int)]();
-        lz4_size = lz4_compress(tmp, lz4_flatcounts, d*w*sizeof(int));
-        delete[] tmp;
-    }
+    // else if (type == LZ4) {
+    //     assert(filename == NULL);
+    //     char* tmp = new char[d*w*sizeof(int)]();
+    //     lz4_size = lz4_compress(tmp, lz4_flatcounts, d*w*sizeof(int));
+    //     delete[] tmp;
+    // }
     else if (type == BufferedHash || type == BufferedTree || type == BufferedRaw) {
         assert(filename != NULL);
         if (w*d < BLOCKSIZE) {
@@ -451,7 +476,7 @@ void CountMin::update(uint64_t i, int c) {
             tree_counts[j][hash(i, hash_seed[j]) % w] += c;
         }
     }
-    else if (type == ChunksZlib) {
+    else if (type == ChunksZlib || type == LZ4) {
         for (size_t j = 0; j < d; j++) {
             size_t index =  hash(i, hash_seed[j]) % w; // find out where the hash lives
             size_t chunk_block = (index / CHUNKSIZE); // find out which chunk block it is in
@@ -461,28 +486,19 @@ void CountMin::update(uint64_t i, int c) {
             if (chunk_block == num_chunks - 1) {
                 chunk_size = w % CHUNKSIZE;
             }
+
             int* inflated;
-            if (chunks_zlib[j][chunk_block]) {
-                inflated = zlib_decompress(chunks_zlib[j][chunk_block], compressed_sizes[j][chunk_block], chunk_size * sizeof(int));
-                delete[] chunks_zlib[j][chunk_block];
+            if (chunks_compression[j][chunk_block]) {
+                inflated = decompression(chunks_compression[j][chunk_block], compressed_sizes[j][chunk_block], chunk_size * sizeof(int), type);
+                delete[] chunks_compression[j][chunk_block];
             }
             else {
                 inflated = new int[CHUNKSIZE]();
             }
             inflated[chunk_index] += c;
-            compressed_sizes[j][chunk_block] = zlib_compress(inflated, chunk_size * sizeof(int), &chunks_zlib[j][chunk_block]);
+            compressed_sizes[j][chunk_block] = compression(inflated, chunk_size * sizeof(int), &chunks_compression[j][chunk_block], type);
             delete[] inflated;
         }
-    }
-    else if (type == LZ4) {
-        char* tmp = new char[d*w*sizeof(int)]();
-        lz4_decompress(lz4_flatcounts, tmp, lz4_size, d*w*sizeof(int));
-        delete[] lz4_flatcounts;
-        for(size_t j = 0; j < d; ++j) {
-            ((int*)tmp)[j*w + hash(i, hash_seed[j]) % w] += c;
-        }
-        lz4_compress(tmp, lz4_flatcounts, d*w);
-        delete[] tmp;
     }
     else if (type == BufferedHash || type == BufferedTree || type == BufferedRaw) {
         size_t chunk = hash(i, bchunk_hash_seed)%num_chunks;
@@ -539,35 +555,35 @@ int CountMin::pointQuery(uint64_t i) const {
         }
         return res;
     }
-    if (type == ChunksZlib) {
+    if (type == ChunksZlib || type == LZ4) {
         for (size_t j = 0; j < d; j++) {
             size_t index =  hash(i, hash_seed[j]) % w; // find out where the hash lives
             size_t chunk_block = (index / CHUNKSIZE); // find out which chunk block it is in
             size_t chunk_index = index % CHUNKSIZE; // find out which chunk index it is in the block
             size_t chunk_size = CHUNKSIZE; // size of uncompressed block
-            if (!chunks_zlib[j][chunk_block]) return 0;
+            if (!chunks_compression[j][chunk_block]) return 0;
             // if it's the last block it may be smaller
             if (chunk_block == num_chunks - 1) {
                 chunk_size = w % CHUNKSIZE;
             }
             int* inflated;
-            inflated = zlib_decompress(chunks_zlib[j][chunk_block], compressed_sizes[j][chunk_block], chunk_size * sizeof(int));
+            inflated = decompression(chunks_compression[j][chunk_block], compressed_sizes[j][chunk_block], chunk_size * sizeof(int), type);
             if (j == 0) res = inflated[chunk_index];
             res = min(res, inflated[chunk_index]);
             delete[] inflated;
         }
         return res;
     }
-    if (type == LZ4) {
-        char* tmp = new char[d*w*sizeof(int)]();
-        lz4_decompress(lz4_flatcounts, tmp, lz4_size, d*w*sizeof(int));
-        res = ((int*)tmp)[hash(i, hash_seed[0]) % w];
-        for (size_t j = 1; j < d; j++) {
-            res = min(res, ((int*)tmp)[j*w + hash(i, hash_seed[j]) % w]);
-        }
-        delete[] tmp;
-        return res;
-    }
+    // if (type == LZ4) {
+    //     char* tmp = new char[d*w*sizeof(int)]();
+    //     lz4_decompress(lz4_flatcounts, tmp, lz4_size, d*w*sizeof(int));
+    //     res = ((int*)tmp)[hash(i, hash_seed[0]) % w];
+    //     for (size_t j = 1; j < d; j++) {
+    //         res = min(res, ((int*)tmp)[j*w + hash(i, hash_seed[j]) % w]);
+    //     }
+    //     delete[] tmp;
+    //     return res;
+    // }
     if (type == BufferedHash || type == BufferedTree || type == BufferedRaw) {
         size_t chunk = hash(i, bchunk_hash_seed)%num_chunks;
         return bchunks[0][chunk].pointQuery(i) + bchunks[1][chunk].pointQuery(i);
@@ -614,7 +630,7 @@ int CountMin::innerProductQuery(const CountMin &other) const {
                 }
             }
         }
-        if (other.type == ChunksZlib) {
+        if (other.type == ChunksZlib || other.type == LZ4) {
             char*** chunks = other.getChunkZlibCompressions();
             size_t** sizes = other.getCompressedSizes();
             size_t number_chunks = other.getNumChunks();
@@ -627,7 +643,7 @@ int CountMin::innerProductQuery(const CountMin &other) const {
                             chunk_size = w % CHUNKSIZE;
                         }
                         int* inflated;
-                        inflated = zlib_decompress(chunks[i][j], sizes[i][j], chunk_size * sizeof(int));
+                        inflated = decompression(chunks[i][j], sizes[i][j], chunk_size * sizeof(int), other.type);
                         for (size_t k = 0; k < chunk_size; k++) {
                             totals[j] += flatcounts[i * w + CHUNKSIZE * j + k] * inflated[k];
                         }
@@ -660,21 +676,21 @@ int CountMin::innerProductQuery(const CountMin &other) const {
                 }
             }
     }
-    else if (type == ChunksZlib && other.type == ChunksZlib) {
+    else if ((type == ChunksZlib && other.type == ChunksZlib)|| (type == LZ4 && other.type == LZ4)) {
         char*** chunks = other.getChunkZlibCompressions();
         size_t** sizes = other.getCompressedSizes();
         size_t chunk_size = CHUNKSIZE;
         for (size_t j = 0; j < num_chunks; j++) {
             for (size_t i = 0; i < d; i++) {
                 chunk_size = CHUNKSIZE;
-                if (chunks_zlib[i][j] && chunks[i][j]) {
+                if (chunks_compression[i][j] && chunks[i][j]) {
                     if (j == num_chunks - 1) {
                         chunk_size = w % CHUNKSIZE;
                     }
                     int* inflated1;
                     int* inflated2;
-                    inflated1 = zlib_decompress(chunks[i][j], sizes[i][j], chunk_size * sizeof(int));
-                    inflated2 = zlib_decompress(chunks_zlib[i][j], compressed_sizes[i][j], chunk_size * sizeof(int));
+                    inflated1 = decompression(chunks[i][j], sizes[i][j], chunk_size * sizeof(int), type);
+                    inflated2 = decompression(chunks_compression[i][j], compressed_sizes[i][j], chunk_size * sizeof(int), type);
                     for (size_t k = 0; k < chunk_size; k++) {
                         totals[j] += inflated1[k] * inflated2[k];
                     }
@@ -715,19 +731,19 @@ int CountMin::innerProductQuery(const CountMin &other) const {
                 }
             }
         }
-        else if (type == ChunksZlib) {
+        else if (type == ChunksZlib || type == LZ4) {
             for(size_t i=0; i<updates; ++i) {
                 for (size_t j = 0; j < d; j++) {
                     size_t index = hash(rawlog[i].first, hash_seed[j]) % w;
                     size_t chunk_block = (index / CHUNKSIZE); // find out which chunk block it is in
                     size_t chunk_index = index % CHUNKSIZE; // find out which chunk index it is in the block
                     size_t chunk_size = CHUNKSIZE; // size of uncompressed block
-                    if (chunks_zlib[j][chunk_block]) {
+                    if (chunks_compression[j][chunk_block]) {
                         if (chunk_block == num_chunks - 1) {
                             chunk_size = w % CHUNKSIZE;
                         }
                         int* inflated;
-                        inflated = zlib_decompress(chunks_zlib[j][chunk_block], compressed_sizes[j][chunk_block], chunk_size * sizeof(int));
+                        inflated = decompression(chunks_compression[j][chunk_block], compressed_sizes[j][chunk_block], chunk_size * sizeof(int), type);
                         totals += inflated[chunk_index] * rawlog[i].second;
                         delete[] inflated;
                     }
@@ -809,7 +825,7 @@ void CountMin::mergeCMs(const CountMin& other) {
         }
         return;
     }
-    if (other.type == ChunksZlib) {
+    if (other.type == ChunksZlib || other.type == LZ4) {
         char*** chunks = other.getChunkZlibCompressions();
         size_t** sizes = other.getCompressedSizes();
         size_t number_chunks = other.getNumChunks();
@@ -822,7 +838,7 @@ void CountMin::mergeCMs(const CountMin& other) {
                 }
                 if (chunks[i][j]) {
                     int* inflated;
-                    inflated = zlib_decompress(chunks[i][j], sizes[i][j], chunk_size * sizeof(int));
+                    inflated = decompression(chunks[i][j], sizes[i][j], chunk_size * sizeof(int), other.type);
                     for (size_t k = 0; k < chunk_size; k++) {
                         flatcounts[i * w + CHUNKSIZE * j + k] += inflated[k];
                     }
@@ -843,94 +859,5 @@ void CountMin::mergeCMs(const CountMin& other) {
     fprintf(stderr, "NOT IMPLEMENTED\n");
     exit(0);
 }
-
-// merge the raw log into the count-min directly with a for loop
-void CountMin::mergeRawLog(const vector<pair<uint64_t, uint64_t>>& other, size_t u) {
-    if (type != Uncompressed) {
-        fprintf(stderr, "NOT IMPLEMENTED\n");
-        exit(0);
-    }
-
-    for (size_t j = 0; j < u; j++) {
-        update(other[j].first, other[j].second);
-    }
-}
-
-// merge the raw log into the count-min directly with a for loop
-int CountMin::innerProductQueryRawLog(const vector<pair<uint64_t, uint64_t>>& arr, size_t u) {
-    int* totals = new int[d]();
-    if (type == Uncompressed) {
-        for(size_t i=0; i<u; ++i) {
-            for (size_t j = 0; j < d; j++) {
-                size_t index = hash(arr[i].first, hash_seed[j]) % w;
-                totals[j] += flatcounts[j * w + index] * arr[i].second;
-            }
-        }
-    }
-    else if (type == HashTable) {
-        for(size_t i=0; i<u; ++i) {
-            for (size_t j = 0; j < d; j++) {
-                size_t index = hash(arr[i].first, hash_seed[j]) % w;
-                auto it = hash_table_counts[j].find(index);
-                totals[j] += max(0, it) * arr[i].second;
-            }
-        }
-    }
-    else if (type == Tree) {
-        for(size_t i=0; i<u; ++i) {
-            for (size_t j = 0; j < d; j++) {
-                size_t index = hash(arr[i].first, hash_seed[j]) % w;
-                auto it = tree_counts[j].find(index);
-                if (it != tree_counts[j].end()) {
-                    totals[j] += it->second * arr[i].second;
-                }
-            }
-        }
-    }
-    else if (type == ChunksZlib) {
-        for(size_t i=0; i<u; ++i) {
-            for (size_t j = 0; j < d; j++) {
-                size_t index = hash(arr[i].first, hash_seed[j]) % w;
-                size_t chunk_block = (index / CHUNKSIZE); // find out which chunk block it is in
-                size_t chunk_index = index % CHUNKSIZE; // find out which chunk index it is in the block
-                size_t chunk_size = CHUNKSIZE; // size of uncompressed block
-                if (chunks_zlib[j][chunk_block]) {
-                    if (chunk_block == num_chunks - 1) {
-                        chunk_size = w % CHUNKSIZE;
-                    }
-                    int* inflated;
-                    inflated = zlib_decompress(chunks_zlib[j][chunk_block], compressed_sizes[j][chunk_block], chunk_size * sizeof(int));
-                    totals += inflated[chunk_index] * arr[i].second;
-                    delete[] inflated;
-                }
-            }
-        }
-    }
-    else {
-        fprintf(stderr, "NOT IMPLEMENTED\n");
-        exit(0);
-    }
-    int res = totals[0];
-    for (size_t j=0; j<d; j++) {
-        res = min(res, totals[j]);
-    }
-    delete[] totals;
-    return res;
-}
-
-// function for querying the raw log
-uint64_t queryRawLog(const vector<pair<uint64_t, uint64_t>>& arr, uint64_t key, size_t u) {
-    for(size_t j=0; j<u; ++j) {
-        if(key==arr[j].first) {
-            return arr[j].second;
-        }
-    }
-    return 0;
-}
-
-// // function for inner product querying two raw logs
-// uint64_t innerProductQueryRawLogs(const vector<pair<uint64_t, uint64_t>>& arr, const vector<pair<uint64_t, uint64_t>>& arr, uint64_t key, size_t u) {
-//     // need to implement
-// }
 
 #endif
