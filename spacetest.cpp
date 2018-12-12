@@ -68,10 +68,9 @@ vector<uint64_t> generate_uniform_keys(int u) {
     return res;
 }
 
-void foo(int n, int u, double delta) {
-    double epsilon = M_E / (10 * n),
-        //    delta = 1 / pow(M_E, 3),
-           epsilon_u = M_E / (10 * u);
+void experiment_space(long long n, int u, double delta, double c) {
+    double epsilon = M_E / (c * n),
+           epsilon_u = M_E / (c * u);
 
     // naked count-min on disk
     CountMin cm_ssd(
@@ -113,41 +112,97 @@ void foo(int n, int u, double delta) {
         "in memory lz4 buffer"
     );
 
-    // update time
-    auto uniform_kvs = generate_uniform_kvs(u);
-    auto zipf_kvs = generate_zipf_kvs(u);
+    CountMin cm_bufhash(
+        epsilon, delta, 1337, BufferedHash, u, "bufhash.cm",
+        "buffer hash countmin"
+    );
 
-    // Need for some to figure out the size
+    CountMin cm_buftree(
+        epsilon, delta, 1337, BufferedTree, u, "buftree.cm",
+        "buffer tree countmin"
+    );
+    
+    CountMin cm_bufraw(
+        epsilon, delta, 1337, BufferedRaw, u, "bufraw.cm",
+        "buffer raw countmin"
+    );
+
+    auto uniform_kvs = generate_uniform_kvs(u);
+
     update_cm(cm_hashtable, uniform_kvs);
     update_cm(cm_tree, uniform_kvs);
     update_cm(cm_rawlog, uniform_kvs);
     update_cm(cm_zlib, uniform_kvs);
     update_cm(cm_lz4, uniform_kvs);
+    update_cm(cm_bufhash, uniform_kvs);
+    update_cm(cm_buftree, uniform_kvs);
+    update_cm(cm_bufraw, uniform_kvs);
 
-    printf("naked count-min on disk size:    %lld\n", cm_ssd.getMem());
-    printf("in memory count-min buffer size: %lld\n", cm_cmbuf.getMem());
-    printf("in memory hashtable buffer size: %lld\n", cm_hashtable.getMem());
-    printf("in memory tree buffer size:      %lld\n", cm_tree.getMem());
-    printf("in memory raw log buffer size:   %lld\n", cm_rawlog.getMem());
-    printf("in memory zlib buffer size:      %lld\n", cm_zlib.getMem());
-    printf("in memory lz4 buffer size:       %lld\n", cm_lz4.getMem());
+    printf("naked count-min on disk size:\t%lld\n", cm_ssd.getMem());
+    printf("in memory count-min buffer size:\t%lld\n", cm_cmbuf.getMem());
+    printf("in memory hashtable buffer size:\t%lld\n", cm_hashtable.getMem());
+    printf("in memory tree buffer size:\t%lld\n", cm_tree.getMem());
+    printf("in memory raw log buffer size:\t%lld\n", cm_rawlog.getMem());
+    printf("in memory zlib buffer size:\t%lld\n", cm_zlib.getMem());
+    printf("in memory lz4 buffer size:\t%lld\n", cm_lz4.getMem());
+    printf("buffer hash countmin size:\t%lld\n", cm_bufhash.getMem());
+    printf("buffer tree countmin size:\t%lld\n", cm_buftree.getMem());
+    printf("buffer raw countmin size:\t%lld\n", cm_bufraw.getMem());
+}
+
+void full_experiment_space() {
+    long long ns[] = {
+        500000000
+    };
+    int us[] = {
+        5000,
+        15000,
+        25000,
+        35000,
+        45000
+    };
+    double deltas[] = {
+        0.02,
+        0.05,
+        0.08,
+        0.1
+    };
+    double cs[] = {
+        10.0,
+        5.0,
+        2.5,
+        0.7,
+        // 0.15,
+        // 0.05,
+        // 0.01
+    };
+    constexpr long long N = 500000000;
+    constexpr int U = 25000;
+    constexpr double DELTA = 0.05;
+    constexpr double C = 5.0;
+    for (auto u : us) {
+        printf("n = %lld\nu = %d\ndelta = %f\neps = %e\n",
+               N, u, DELTA, M_E / (C * N));
+        experiment_space(N, u, DELTA, C);
+        printf("\n");
+        fprintf(stderr, "yay\n");
+    }
+    for (auto delta : deltas) {
+        printf("n = %lld\nu = %d\ndelta = %f\neps = %e\n",
+               N, U, delta, M_E / (C * N));
+        experiment_space(N, U, delta, C);
+        printf("\n");
+        fprintf(stderr, "yay\n");
+    }
+    for (auto c : cs) {
+        printf("n = %lld\nu = %d\ndelta = %f\neps = %e\n",
+               N, U, DELTA, M_E / (c * N));
+        experiment_space(N, U, DELTA, c);
+        printf("\n");
+        fprintf(stderr, "yay\n");
+    }
 }
 
 int main(int argc, char** argv) {
-    int n = atoi(argv[1]),
-        u = atoi(argv[2]),
-        q = atoi(argv[3]);
-
-    for (int u = 10000; u <= 50000; u += 10000) {
-        foo(100000, u, 0.05);
-    }
-    // for (int i = 0; i < 10; i++) {
-    //     int n = 100000 + i * 100000;
-    // }
-
-    // for (int i = 0; i < 10; i++) {
-    // }
-
-    // Print sizes of normal count-min on ssd for different n and delta.
-    // 
+    full_experiment_space();
 }

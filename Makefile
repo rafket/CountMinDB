@@ -21,7 +21,7 @@ buffered_bench: lz4.h lz4.c MurmurHash3.h MurmurHash3.cpp cm.h buffered_bench.cp
 experiments: time_bench error_bench ssd_bench
 
 clean:
-	rm time_bench error_bench ssd_bench time_ip_bench time_btw_ip_bench pq_test totaltest
+	rm time_bench error_bench ssd_bench time_ip_bench time_btw_ip_bench pq_test totaltest spacetest
 
 run_time_bench: time_bench
 	./time_bench 200000 200000 10000 && ./time_bench 400000 400000 10000 && ./time_bench 600000 600000 10000 && ./time_bench 800000 800000 10000 && ./time_bench 1000000 100000 10000
@@ -47,10 +47,10 @@ totaltest: lz4.h lz4.c MurmurHash3.h MurmurHash3.cpp cm.h zipf.h totaltest.cpp
 	$(CXX) -O3 lz4.c MurmurHash3.cpp totaltest.cpp -lz -o totaltest -Wall
 
 run_totaltest: totaltest
-	./totaltest 100000 10000 100000
+	./totaltest
 
 spacetest: lz4.h lz4.c MurmurHash3.h MurmurHash3.cpp cm.h zipf.h spacetest.cpp
 	$(CXX) -O3 lz4.c MurmurHash3.cpp spacetest.cpp -lz -o spacetest -Wall
 
 run_spacetest: spacetest
-	./spacetest 100000 10000 100000
+	./spacetest

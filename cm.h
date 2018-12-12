@@ -1,7 +1,7 @@
 #ifndef CM_H
 #define CM_H
 #define CHUNKSIZE 4096
-#define BLOCKSIZE 268435456 // 256 KB -- One SSD block
+#define BLOCKSIZE 1048576 // 1 MB -- One SSD block
 #define BUFFERSIZE 1024
 
 #include <bits/stdc++.h>
@@ -770,20 +770,38 @@ int CountMin::innerProductQuery(const CountMin &other) const {
                 }
             }
         }
-        else if ( (type == BufferedHash || type == BufferedTree || type == BufferedRaw)
-                && (other.type == BufferedHash || other.type == BufferedTree || other.type == BufferedRaw) ) {
-            assert(num_chunks == other.getNumChunks());
-            const vector<CountMin>* otherBchunks = other.getBchunks();
-            int res = 0;
-            for(size_t k=0; k<num_chunks; ++k) {
-                res += bchunks[0][k].innerProductQuery(otherBchunks[0][k]);
-                res += bchunks[0][k].innerProductQuery(otherBchunks[1][k]);
-                res += bchunks[1][k].innerProductQuery(otherBchunks[0][k]);
-                res += bchunks[1][k].innerProductQuery(otherBchunks[1][k]);
+        else if (type == RawLog) {
+            const auto &myrawlog = getRawLog();
+            unordered_map<uint64_t, int> myv;
+            for (auto &&p : myrawlog) {
+                myv[p.first] += p.second;
             }
-            delete[] totals;
+            int res = 0;
+            for (auto &&p : rawlog) {
+                res += myv[p.first] * p.second;
+            }
             return res;
         }
+    }
+    else if ( (type == BufferedHash || type == BufferedTree || type == BufferedRaw)
+            && (other.type == BufferedHash || other.type == BufferedTree || other.type == BufferedRaw) ) {
+        assert(num_chunks == other.getNumChunks());
+        const vector<CountMin>* otherBchunks = other.getBchunks();
+        int res = 0;
+        for(size_t k=0; k<num_chunks; ++k) {
+            res += bchunks[0][k].innerProductQuery(otherBchunks[0][k]);
+        }
+        for(size_t k=0; k<num_chunks; ++k) {
+            res += bchunks[0][k].innerProductQuery(otherBchunks[1][k]);
+        }
+        for(size_t k=0; k<num_chunks; ++k) {
+            res += otherBchunks[0][k].innerProductQuery(bchunks[1][k]);
+        }
+        for(size_t k=0; k<num_chunks; ++k) {
+            res += bchunks[1][k].innerProductQuery(otherBchunks[1][k]);
+        }
+        delete[] totals;
+        return res;
     }
     else {
         fprintf(stderr, "NOT IMPLEMENTED\n");
@@ -813,6 +831,9 @@ void CountMin::clear() {
             i.clear();
         }
         num_contents = 0;
+    }
+    else if (type == RawLog) {
+        num_updates = 0;
     }
     else {
         fprintf(stderr, "NOT IMPLEMENTED\n");
